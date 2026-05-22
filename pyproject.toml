@@ -4,7 +4,7 @@
 [project]
 name = "wildfire-geo-ml"
 version = "0.1.0"
-description = "Cloud-native geospatial ML pipeline for PG&E vegetation encroachment risk scoring"
+description = "Cloud-native geospatial ML pipeline for vegetation encroachment risk scoring on transmission corridors in Northern California HFTD territory"
 readme = "README.md"
 requires-python = ">=3.12"
 authors = [{ name = "Amninder Singh" }]

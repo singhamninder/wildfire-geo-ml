@@ -13,3 +13,8 @@ data/cog/
 
 .DS_Store
 .cursor/
+
+# Agent
+AGENT.md
+CLAUDE.md
+PROJECT_SPEC.md
