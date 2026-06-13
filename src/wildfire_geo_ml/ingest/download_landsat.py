@@ -19,14 +19,15 @@ from typing import Protocol, cast
 import boto3
 import click
 from botocore.exceptions import ClientError, NoCredentialsError
+from dotenv import load_dotenv
 from tqdm import tqdm
 
 from wildfire_geo_ml.ingest.config import IngestConfig, load_pipeline_config
+from wildfire_geo_ml.ingest.discover_scenes import DiscoveredScene, resolve_scene_list
 from wildfire_geo_ml.ingest.landsat_paths import (
     local_band_path,
     local_mtl_path,
     mtl_key,
-    parse_scene_id,
     sr_band_key,
 )
 
@@ -114,44 +115,6 @@ def get_landsat_s3_client() -> S3DownloadClient:
         raise
 
 
-def filter_scenes(
-    scenes: list[str],
-    wrs_path: str | None = None,
-    rows: list[str] | None = None,
-    dates: list[str] | None = None,
-) -> list[str]:
-    """
-    Filter configured scene IDs by WRS path, row, and/or acquisition date.
-
-    Parameters
-    ----------
-    scenes : list[str]
-        Scene IDs from config or CLI override.
-    wrs_path : str, optional
-        WRS-2 path to match (e.g. ``044``).
-    rows : list[str], optional
-        WRS-2 rows to match (e.g. ``["032", "033"]``).
-    dates : list[str], optional
-        Acquisition dates as YYYYMMDD (e.g. ``["20240715"]``).
-
-    Returns
-    -------
-    list[str]
-        Scene IDs passing all supplied filters.
-    """
-    filtered: list[str] = []
-    for scene_id in scenes:
-        meta = parse_scene_id(scene_id)
-        if wrs_path is not None and meta.wrs_path != wrs_path:
-            continue
-        if rows is not None and meta.wrs_row not in rows:
-            continue
-        if dates is not None and meta.acquisition_date not in dates:
-            continue
-        filtered.append(scene_id)
-    return filtered
-
-
 def download_file(
     s3: S3DownloadClient,
     bucket: str,
@@ -164,8 +127,8 @@ def download_file(
 
     Parameters
     ----------
-    s3 : S3Client
-        Boto3 S3 client (unsigned for public buckets).
+    s3 : S3DownloadClient
+        Boto3 S3 client configured for Requester Pays downloads.
     bucket : str
         S3 bucket name.
     key : str
@@ -292,6 +255,17 @@ def run_download(
     return reports
 
 
+def _print_discovery_table(scenes: list[DiscoveredScene]) -> None:
+    """Print discovered scenes with cloud cover and WRS path/row."""
+    click.echo("\nDiscovered scenes:")
+    click.echo(f"{'Scene ID':<45} {'Cloud%':<8} {'Path/Row':<10} {'Date':<10}")
+    click.echo("-" * 75)
+    for scene in scenes:
+        path_row = f"{scene.wrs_path}/{scene.wrs_row}"
+        cloud = f"{scene.cloud_cover:.1f}" if scene.cloud_cover > 0 else "n/a"
+        click.echo(f"{scene.scene_id:<45} {cloud:<8} {path_row:<10} {scene.acquisition_date:<10}")
+
+
 def _print_summary(reports: list[DownloadReport]) -> None:
     """Print a human-readable summary table to stdout."""
     click.echo("\nDownload summary:")
@@ -345,6 +319,22 @@ def _print_summary(reports: list[DownloadReport]) -> None:
     help="Comma-separated bands (e.g. B4,B5); defaults to config",
 )
 @click.option("--force", is_flag=True, help="Re-download files that already exist")
+@click.option(
+    "--use-config-scenes",
+    is_flag=True,
+    help="Use hardcoded ingest.scenes from config (skip STAC discovery)",
+)
+@click.option(
+    "--discover-only",
+    is_flag=True,
+    help="Discover scenes over AOI and print table; do not download",
+)
+@click.option(
+    "--max-cloud-cover",
+    type=float,
+    default=None,
+    help="Override discover.max_cloud_cover (percent; scenes must be below this)",
+)
 def main(
     config_path: Path,
     output_dir: Path,
@@ -354,44 +344,84 @@ def main(
     dates: tuple[str, ...],
     bands: str | None,
     force: bool,
+    use_config_scenes: bool,
+    discover_only: bool,
+    max_cloud_cover: float | None,
 ) -> None:
     """
     Download Landsat-9 SR bands and MTL JSON from s3://usgs-landsat.
 
-    Scene IDs come from config/pipeline.yaml unless --scenes is set.
-    Use --path, --rows, and --dates to filter the configured list.
+    By default, discovers scenes over the study-area AOI via LandsatLook STAC
+    (bbox + datetime + cloud cover from config/pipeline.yaml). Use
+    ``--use-config-scenes`` for the hardcoded reproducible list.
 
-    Requires AWS credentials (Requester Pays bucket); set AWS_PROFILE if needed.
+    Requires AWS credentials (Requester Pays bucket); set AWS_PROFILE in .env or shell.
     """
+    load_dotenv()
     logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 
     pipeline = load_pipeline_config(config_path)
     ingest = pipeline.ingest
 
+    scene_override: list[str] | None = None
     if scenes:
-        scene_list = [s.strip() for s in scenes.split(",") if s.strip()]
-    else:
-        scene_list = list(ingest.scenes)
+        scene_override = [s.strip() for s in scenes.split(",") if s.strip()]
 
     path_filter = wrs_path if wrs_path is not None else ingest.wrs_path
     row_filter = list(rows) if rows else None
     date_filter = list(dates) if dates else None
 
-    scene_list = filter_scenes(
-        scene_list,
-        wrs_path=path_filter,
-        rows=row_filter,
-        dates=date_filter,
+    cloud_threshold = (
+        max_cloud_cover if max_cloud_cover is not None else pipeline.discover.max_cloud_cover
     )
+    logger.info(
+        "Scene selection: bbox=%s datetime=%s cloud_cover < %.1f%%",
+        pipeline.study_area.bbox,
+        pipeline.study_area.datetime,
+        cloud_threshold,
+    )
+
+    try:
+        discovered = resolve_scene_list(
+            pipeline,
+            use_config_scenes=use_config_scenes or scene_override is not None,
+            max_cloud_cover=max_cloud_cover,
+            wrs_path=path_filter,
+            rows=row_filter,
+            dates=date_filter,
+            scene_override=scene_override,
+        )
+    except ValueError as exc:
+        click.echo(f"Error: {exc}", err=True)
+        sys.exit(1)
+
+    if discover_only:
+        _print_discovery_table(discovered)
+        click.echo(f"\n{len(discovered)} scene(s) matched filters.")
+        return
+
+    if not discovered:
+        click.echo("No scenes matched the filters; nothing to download.", err=True)
+        sys.exit(1)
+
+    for scene in discovered:
+        logger.info(
+            "Queued %s (cloud=%.1f%%, path/row=%s/%s)",
+            scene.scene_id,
+            scene.cloud_cover,
+            scene.wrs_path,
+            scene.wrs_row,
+        )
 
     band_list: list[str] | None = None
     if bands:
         band_list = [b.strip().upper() for b in bands.split(",") if b.strip()]
 
+    scene_ids = [scene.scene_id for scene in discovered]
     reports = run_download(
         ingest,
         output_dir,
-        scene_list,
+        scene_ids,
         bands=band_list,
         force=force,
     )

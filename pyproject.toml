@@ -132,7 +132,10 @@ include = ["src"]
 # ---------------------------------------------------------------------------
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = "-v --tb=short"
+addopts = "-v --tb=short -m 'not network'"
+markers = [
+    "network: tests that call external APIs (run with pytest -m network)",
+]
 filterwarnings = [
     "ignore::DeprecationWarning:pystac",
     "ignore::UserWarning:rasterio",

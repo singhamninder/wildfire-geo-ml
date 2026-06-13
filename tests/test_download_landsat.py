@@ -15,12 +15,13 @@ from wildfire_geo_ml.ingest.config import IngestConfig, load_pipeline_config
 from wildfire_geo_ml.ingest.download_landsat import (
     download_file,
     download_scene,
-    filter_scenes,
     get_landsat_s3_client,
 )
 from wildfire_geo_ml.ingest.landsat_paths import (
+    filter_scenes,
     local_band_path,
     mtl_key,
+    normalize_scene_id,
     parse_scene_id,
     sr_band_key,
 )
@@ -57,6 +58,14 @@ def test_parse_scene_id(
 def test_parse_scene_id_invalid() -> None:
     with pytest.raises(ValueError, match="Invalid scene ID"):
         parse_scene_id("not-a-scene")
+
+
+def test_normalize_scene_id_leaves_canonical_id_unchanged() -> None:
+    assert normalize_scene_id(SCENE_ID) == SCENE_ID
+
+
+def test_normalize_scene_id_strips_trailing_sr() -> None:
+    assert normalize_scene_id(f"{SCENE_ID}_SR") == SCENE_ID
 
 
 def test_build_s3_keys() -> None:
@@ -131,6 +140,8 @@ def test_load_pipeline_config() -> None:
     pipeline = load_pipeline_config(config_path)
     assert len(pipeline.ingest.scenes) == 3
     assert pipeline.ingest.bucket == "usgs-landsat"
+    assert pipeline.discover.max_cloud_cover == 10.0
+    assert len(pipeline.study_area.bbox) == 4
 
 
 @mock_aws

@@ -57,6 +57,16 @@ def pipeline_config_path(tmp_path: Path) -> Path:
     config_file = tmp_path / "pipeline.yaml"
     config_file.write_text(
         f"""
+study_area:
+  bbox: [-122.5, 39.0, -120.0, 41.5]
+  datetime: "2024-07-01/2024-08-31"
+
+discover:
+  stac_api_url: "https://landsatlook.usgs.gov/stac-server"
+  collection: "landsat-c2l2-sr"
+  platform: "LANDSAT_9"
+  max_cloud_cover: 10
+
 ingest:
   bucket: {BUCKET}
   collection_prefix: {COLLECTION_PREFIX}

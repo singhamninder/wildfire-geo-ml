@@ -63,6 +63,28 @@ def parse_scene_id(scene_id: str) -> SceneMeta:
     )
 
 
+def normalize_scene_id(scene_id: str) -> str:
+    """
+    Convert a LandsatLook STAC item ID to the USGS/AWS scene ID.
+
+    The ``landsat-c2l2-sr`` STAC collection appends ``_SR`` to item IDs; S3 object
+    keys under ``s3://usgs-landsat`` use the base scene ID without that suffix.
+
+    Parameters
+    ----------
+    scene_id : str
+        STAC item ID or canonical scene ID.
+
+    Returns
+    -------
+    str
+        Scene ID suitable for S3 key construction.
+    """
+    if scene_id.endswith("_SR"):
+        return scene_id[:-3]
+    return scene_id
+
+
 def scene_prefix(
     scene_id: str,
     collection_prefix: str = DEFAULT_COLLECTION_PREFIX,
@@ -160,3 +182,41 @@ def local_band_path(output_dir: Path, scene_id: str, band: str) -> Path:
 def local_mtl_path(output_dir: Path, scene_id: str) -> Path:
     """Return the local path for the scene MTL JSON file."""
     return local_scene_dir(output_dir, scene_id) / f"{scene_id}_MTL.json"
+
+
+def filter_scenes(
+    scenes: list[str],
+    wrs_path: str | None = None,
+    rows: list[str] | None = None,
+    dates: list[str] | None = None,
+) -> list[str]:
+    """
+    Filter scene IDs by WRS path, row, and/or acquisition date.
+
+    Parameters
+    ----------
+    scenes : list[str]
+        Scene IDs to filter.
+    wrs_path : str, optional
+        WRS-2 path to match (e.g. ``044``).
+    rows : list[str], optional
+        WRS-2 rows to match (e.g. ``["032", "033"]``).
+    dates : list[str], optional
+        Acquisition dates as YYYYMMDD.
+
+    Returns
+    -------
+    list[str]
+        Scene IDs passing all supplied filters.
+    """
+    filtered: list[str] = []
+    for scene_id in scenes:
+        meta = parse_scene_id(scene_id)
+        if wrs_path is not None and meta.wrs_path != wrs_path:
+            continue
+        if rows is not None and meta.wrs_row not in rows:
+            continue
+        if dates is not None and meta.acquisition_date not in dates:
+            continue
+        filtered.append(scene_id)
+    return filtered

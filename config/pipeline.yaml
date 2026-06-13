@@ -1,6 +1,16 @@
 # Pipeline configuration — loaded once at CLI entry points.
 # Library code receives typed config objects; it does not read this file directly.
 
+study_area:
+  bbox: [-122.5, 39.0, -120.0, 41.5]  # west, south, east, north — HFTD Tier 3 AOI
+  datetime: "2024-07-01/2024-08-31"
+
+discover:
+  stac_api_url: "https://landsatlook.usgs.gov/stac-server"
+  collection: "landsat-c2l2-sr"
+  platform: "LANDSAT_9"
+  max_cloud_cover: 10
+
 ingest:
   bucket: usgs-landsat
   collection_prefix: collection02/level-2/standard/oli-tirs
