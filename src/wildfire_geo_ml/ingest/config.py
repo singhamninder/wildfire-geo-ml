@@ -52,7 +52,6 @@ class IngestConfig(BaseModel):
     collection_prefix: str = "collection02/level-2/standard/oli-tirs"
     bands: list[str] = Field(default_factory=lambda: ["B2", "B3", "B4", "B5", "B6", "B7"])
     wrs_path: str = "044"
-    scenes: list[str] = Field(default_factory=list)
 
 
 class PipelineConfig(BaseModel):

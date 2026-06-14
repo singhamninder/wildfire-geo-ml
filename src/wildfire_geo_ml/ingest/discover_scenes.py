@@ -1,8 +1,7 @@
 """
 Discover Landsat-9 scenes over the study-area AOI via USGS LandsatLook STAC API.
 
-WHY: Scene selection should be geography-driven (bbox + datetime + cloud cover),
-not a manually curated ID list. Hardcoded scenes in config remain a reproducible fallback.
+WHY: Scene selection should be geography-driven (bbox + datetime + cloud cover).
 """
 
 import logging
@@ -11,8 +10,16 @@ from dataclasses import dataclass
 from pystac import Item
 from pystac_client import Client
 
-from wildfire_geo_ml.ingest.config import DiscoverConfig, PipelineConfig, StudyAreaConfig
-from wildfire_geo_ml.ingest.landsat_paths import filter_scenes, normalize_scene_id, parse_scene_id
+from wildfire_geo_ml.ingest.config import (
+    DiscoverConfig,
+    PipelineConfig,
+    StudyAreaConfig,
+)
+from wildfire_geo_ml.ingest.landsat_paths import (
+    filter_scenes,
+    normalize_scene_id,
+    parse_scene_id,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -133,22 +140,18 @@ def discover_scenes(
 
 def resolve_scene_list(
     pipeline: PipelineConfig,
-    use_config_scenes: bool,
     max_cloud_cover: float | None = None,
     wrs_path: str | None = None,
     rows: list[str] | None = None,
     dates: list[str] | None = None,
-    scene_override: list[str] | None = None,
 ) -> list[DiscoveredScene]:
     """
-    Resolve scenes to download: STAC discovery (default) or config fallback.
+    Resolve scenes to download via STAC discovery over the study-area AOI.
 
     Parameters
     ----------
     pipeline : PipelineConfig
         Full pipeline configuration.
-    use_config_scenes : bool
-        If True, use ``ingest.scenes`` and skip cloud filtering.
     max_cloud_cover : float, optional
         Override cloud threshold for discovery.
     wrs_path : str, optional
@@ -157,8 +160,6 @@ def resolve_scene_list(
         WRS-2 row filter.
     dates : list[str], optional
         Acquisition date filter (YYYYMMDD).
-    scene_override : list[str], optional
-        Explicit scene IDs from ``--scenes`` CLI flag.
 
     Returns
     -------
@@ -166,27 +167,6 @@ def resolve_scene_list(
         Filtered scenes ready for download.
     """
     path_filter = wrs_path if wrs_path is not None else pipeline.ingest.wrs_path
-
-    if scene_override is not None:
-        scene_ids = filter_scenes(
-            scene_override,
-            wrs_path=path_filter,
-            rows=rows,
-            dates=dates,
-        )
-        return [DiscoveredScene(scene_id=sid, cloud_cover=0.0) for sid in scene_ids]
-
-    if use_config_scenes:
-        logger.info(
-            "Using hardcoded scenes from config (--use-config-scenes); cloud filter bypassed"
-        )
-        scene_ids = filter_scenes(
-            list(pipeline.ingest.scenes),
-            wrs_path=path_filter,
-            rows=rows,
-            dates=dates,
-        )
-        return [DiscoveredScene(scene_id=sid, cloud_cover=0.0) for sid in scene_ids]
 
     discovered = discover_scenes(
         pipeline.study_area,

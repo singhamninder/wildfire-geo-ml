@@ -293,11 +293,6 @@ def _print_summary(reports: list[DownloadReport]) -> None:
     help="Root directory for per-scene downloads",
 )
 @click.option(
-    "--scenes",
-    default=None,
-    help="Comma-separated scene IDs (overrides config list)",
-)
-@click.option(
     "--path",
     "wrs_path",
     default=None,
@@ -320,11 +315,6 @@ def _print_summary(reports: list[DownloadReport]) -> None:
 )
 @click.option("--force", is_flag=True, help="Re-download files that already exist")
 @click.option(
-    "--use-config-scenes",
-    is_flag=True,
-    help="Use hardcoded ingest.scenes from config (skip STAC discovery)",
-)
-@click.option(
     "--discover-only",
     is_flag=True,
     help="Discover scenes over AOI and print table; do not download",
@@ -338,22 +328,20 @@ def _print_summary(reports: list[DownloadReport]) -> None:
 def main(
     config_path: Path,
     output_dir: Path,
-    scenes: str | None,
     wrs_path: str | None,
     rows: tuple[str, ...],
     dates: tuple[str, ...],
     bands: str | None,
     force: bool,
-    use_config_scenes: bool,
     discover_only: bool,
     max_cloud_cover: float | None,
 ) -> None:
     """
     Download Landsat-9 SR bands and MTL JSON from s3://usgs-landsat.
 
-    By default, discovers scenes over the study-area AOI via LandsatLook STAC
+    Discovers scenes over the study-area AOI via LandsatLook STAC
     (bbox + datetime + cloud cover from config/pipeline.yaml). Use
-    ``--use-config-scenes`` for the hardcoded reproducible list.
+    ``--path``/``--rows``/``--dates`` to narrow the download set.
 
     Requires AWS credentials (Requester Pays bucket); set AWS_PROFILE in .env or shell.
     """
@@ -362,10 +350,6 @@ def main(
 
     pipeline = load_pipeline_config(config_path)
     ingest = pipeline.ingest
-
-    scene_override: list[str] | None = None
-    if scenes:
-        scene_override = [s.strip() for s in scenes.split(",") if s.strip()]
 
     path_filter = wrs_path if wrs_path is not None else ingest.wrs_path
     row_filter = list(rows) if rows else None
@@ -384,12 +368,10 @@ def main(
     try:
         discovered = resolve_scene_list(
             pipeline,
-            use_config_scenes=use_config_scenes or scene_override is not None,
             max_cloud_cover=max_cloud_cover,
             wrs_path=path_filter,
             rows=row_filter,
             dates=date_filter,
-            scene_override=scene_override,
         )
     except ValueError as exc:
         click.echo(f"Error: {exc}", err=True)

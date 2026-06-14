@@ -138,7 +138,6 @@ def test_load_pipeline_config() -> None:
     if not config_path.is_file():
         pytest.skip("config/pipeline.yaml not present")
     pipeline = load_pipeline_config(config_path)
-    assert len(pipeline.ingest.scenes) == 3
     assert pipeline.ingest.bucket == "usgs-landsat"
     assert pipeline.discover.max_cloud_cover == 10.0
     assert len(pipeline.study_area.bbox) == 4

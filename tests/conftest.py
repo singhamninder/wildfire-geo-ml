@@ -23,7 +23,6 @@ def ingest_config() -> IngestConfig:
         collection_prefix=COLLECTION_PREFIX,
         bands=BANDS,
         wrs_path="044",
-        scenes=[SCENE_ID],
     )
 
 
@@ -72,10 +71,6 @@ ingest:
   collection_prefix: {COLLECTION_PREFIX}
   bands: {BANDS}
   wrs_path: "044"
-  scenes:
-    - {SCENE_ID}
-    - LC09_L2SP_044033_20240715_20240717_02_T1
-    - LC09_L2SP_044032_20240731_20240802_02_T1
 """,
         encoding="utf-8",
     )

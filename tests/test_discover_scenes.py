@@ -58,7 +58,6 @@ def pipeline_config(study_area: StudyAreaConfig, discover_config: DiscoverConfig
         discover=discover_config,
         ingest=IngestConfig(
             wrs_path="044",
-            scenes=[SCENE_A, SCENE_B, SCENE_CLOUDY],
         ),
     )
 
@@ -186,13 +185,6 @@ def test_discover_respects_max_cloud_cover_override(
     assert call_kwargs["query"]["eo:cloud_cover"] == {"lt": 5.0}
 
 
-def test_resolve_scene_list_use_config_scenes(pipeline_config: PipelineConfig) -> None:
-    results = resolve_scene_list(pipeline_config, use_config_scenes=True)
-
-    assert len(results) == 3
-    assert results[0].scene_id == SCENE_A
-
-
 @patch("wildfire_geo_ml.ingest.discover_scenes.discover_scenes")
 def test_resolve_scene_list_discover_default(
     mock_discover: MagicMock,
@@ -208,7 +200,6 @@ def test_resolve_scene_list_discover_default(
 
     results = resolve_scene_list(
         pipeline_config,
-        use_config_scenes=False,
         rows=["032"],
     )
 
