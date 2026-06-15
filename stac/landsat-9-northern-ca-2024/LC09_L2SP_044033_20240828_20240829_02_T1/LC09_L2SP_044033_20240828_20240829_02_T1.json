@@ -1,0 +1,238 @@
+{
+  "type": "Feature",
+  "stac_version": "1.1.0",
+  "stac_extensions": [
+    "https://stac-extensions.github.io/eo/v1.1.0/schema.json",
+    "https://stac-extensions.github.io/projection/v2.0.0/schema.json",
+    "https://stac-extensions.github.io/view/v1.0.0/schema.json"
+  ],
+  "id": "LC09_L2SP_044033_20240828_20240829_02_T1",
+  "geometry": {
+    "type": "Polygon",
+    "coordinates": [
+      [
+        [
+          -123.03412923612265,
+          37.827289098514925
+        ],
+        [
+          -120.34459222749486,
+          37.827289098514925
+        ],
+        [
+          -120.34459222749486,
+          39.95907033553813
+        ],
+        [
+          -123.03412923612265,
+          39.95907033553813
+        ],
+        [
+          -123.03412923612265,
+          37.827289098514925
+        ]
+      ]
+    ]
+  },
+  "bbox": [
+    -123.03412923612265,
+    37.827289098514925,
+    -120.34459222749486,
+    39.95907033553813
+  ],
+  "properties": {
+    "platform": "landsat-9",
+    "instruments": [
+      "OLI",
+      "TIRS"
+    ],
+    "constellation": "landsat",
+    "landsat:wrs_path": "044",
+    "landsat:wrs_row": "033",
+    "landsat:processing_level": "L2SP",
+    "landsat:collection_number": "02",
+    "landsat:collection_category": "T1",
+    "eo:bands": [
+      {
+        "name": "blue",
+        "common_name": "blue",
+        "center_wavelength": 0.482,
+        "full_width_half_max": 0.06
+      },
+      {
+        "name": "green",
+        "common_name": "green",
+        "center_wavelength": 0.562,
+        "full_width_half_max": 0.057
+      },
+      {
+        "name": "red",
+        "common_name": "red",
+        "center_wavelength": 0.655,
+        "full_width_half_max": 0.038
+      },
+      {
+        "name": "nir08",
+        "common_name": "nir08",
+        "center_wavelength": 0.865,
+        "full_width_half_max": 0.028
+      },
+      {
+        "name": "swir16",
+        "common_name": "swir16",
+        "center_wavelength": 1.61,
+        "full_width_half_max": 0.085
+      },
+      {
+        "name": "swir22",
+        "common_name": "swir22",
+        "center_wavelength": 2.2,
+        "full_width_half_max": 0.2
+      }
+    ],
+    "eo:cloud_cover": 0.0,
+    "proj:code": "EPSG:32610",
+    "proj:shape": [
+      7781,
+      7661
+    ],
+    "proj:transform": [
+      30.0,
+      0.0,
+      497100.0,
+      0.0,
+      -30.0,
+      4423200.0
+    ],
+    "view:sun_azimuth": 0.0,
+    "view:sun_elevation": 0.0,
+    "datetime": "2024-08-28T18:45:27Z"
+  },
+  "links": [
+    {
+      "rel": "root",
+      "href": "../../catalog.json",
+      "type": "application/json",
+      "title": "Wildfire Vegetation Risk \u2014 Landsat-9 Northern CA"
+    },
+    {
+      "rel": "collection",
+      "href": "../collection.json",
+      "type": "application/json",
+      "title": "Landsat-9 Northern California Summer 2024"
+    },
+    {
+      "rel": "parent",
+      "href": "../collection.json",
+      "type": "application/json",
+      "title": "Landsat-9 Northern California Summer 2024"
+    }
+  ],
+  "assets": {
+    "B2": {
+      "href": "s3://usgs-landsat/collection02/level-2/standard/oli-tirs/2024/044/033/LC09_L2SP_044033_20240828_20240829_02_T1/LC09_L2SP_044033_20240828_20240829_02_T1_SR_B2.TIF",
+      "type": "image/tiff; application=geotiff; profile=cloud-optimized",
+      "title": "Band B2",
+      "eo:bands": [
+        {
+          "name": "blue",
+          "common_name": "blue",
+          "center_wavelength": 0.482,
+          "full_width_half_max": 0.06
+        }
+      ],
+      "roles": [
+        "data"
+      ]
+    },
+    "B3": {
+      "href": "s3://usgs-landsat/collection02/level-2/standard/oli-tirs/2024/044/033/LC09_L2SP_044033_20240828_20240829_02_T1/LC09_L2SP_044033_20240828_20240829_02_T1_SR_B3.TIF",
+      "type": "image/tiff; application=geotiff; profile=cloud-optimized",
+      "title": "Band B3",
+      "eo:bands": [
+        {
+          "name": "green",
+          "common_name": "green",
+          "center_wavelength": 0.562,
+          "full_width_half_max": 0.057
+        }
+      ],
+      "roles": [
+        "data"
+      ]
+    },
+    "B4": {
+      "href": "s3://usgs-landsat/collection02/level-2/standard/oli-tirs/2024/044/033/LC09_L2SP_044033_20240828_20240829_02_T1/LC09_L2SP_044033_20240828_20240829_02_T1_SR_B4.TIF",
+      "type": "image/tiff; application=geotiff; profile=cloud-optimized",
+      "title": "Band B4",
+      "eo:bands": [
+        {
+          "name": "red",
+          "common_name": "red",
+          "center_wavelength": 0.655,
+          "full_width_half_max": 0.038
+        }
+      ],
+      "roles": [
+        "data"
+      ]
+    },
+    "B5": {
+      "href": "s3://usgs-landsat/collection02/level-2/standard/oli-tirs/2024/044/033/LC09_L2SP_044033_20240828_20240829_02_T1/LC09_L2SP_044033_20240828_20240829_02_T1_SR_B5.TIF",
+      "type": "image/tiff; application=geotiff; profile=cloud-optimized",
+      "title": "Band B5",
+      "eo:bands": [
+        {
+          "name": "nir08",
+          "common_name": "nir08",
+          "center_wavelength": 0.865,
+          "full_width_half_max": 0.028
+        }
+      ],
+      "roles": [
+        "data"
+      ]
+    },
+    "B6": {
+      "href": "s3://usgs-landsat/collection02/level-2/standard/oli-tirs/2024/044/033/LC09_L2SP_044033_20240828_20240829_02_T1/LC09_L2SP_044033_20240828_20240829_02_T1_SR_B6.TIF",
+      "type": "image/tiff; application=geotiff; profile=cloud-optimized",
+      "title": "Band B6",
+      "eo:bands": [
+        {
+          "name": "swir16",
+          "common_name": "swir16",
+          "center_wavelength": 1.61,
+          "full_width_half_max": 0.085
+        }
+      ],
+      "roles": [
+        "data"
+      ]
+    },
+    "B7": {
+      "href": "s3://usgs-landsat/collection02/level-2/standard/oli-tirs/2024/044/033/LC09_L2SP_044033_20240828_20240829_02_T1/LC09_L2SP_044033_20240828_20240829_02_T1_SR_B7.TIF",
+      "type": "image/tiff; application=geotiff; profile=cloud-optimized",
+      "title": "Band B7",
+      "eo:bands": [
+        {
+          "name": "swir22",
+          "common_name": "swir22",
+          "center_wavelength": 2.2,
+          "full_width_half_max": 0.2
+        }
+      ],
+      "roles": [
+        "data"
+      ]
+    },
+    "MTL_JSON": {
+      "href": "s3://usgs-landsat/collection02/level-2/standard/oli-tirs/2024/044/033/LC09_L2SP_044033_20240828_20240829_02_T1/LC09_L2SP_044033_20240828_20240829_02_T1_MTL.json",
+      "type": "application/json",
+      "title": "MTL JSON Metadata",
+      "roles": [
+        "metadata"
+      ]
+    }
+  },
+  "collection": "landsat-9-northern-ca-2024"
+}

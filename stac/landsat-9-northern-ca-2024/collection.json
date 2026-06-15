@@ -1,0 +1,151 @@
+{
+  "type": "Collection",
+  "id": "landsat-9-northern-ca-2024",
+  "stac_version": "1.1.0",
+  "description": "Landsat-9 Collection 2 Level-2 Surface Reflectance over HFTD Tier 3 territory (Butte, Plumas, Shasta counties). Summer 2024 peak fire season. Built for vegetation encroachment risk analysis on transmission corridors.",
+  "links": [
+    {
+      "rel": "root",
+      "href": "../catalog.json",
+      "type": "application/json",
+      "title": "Wildfire Vegetation Risk \u2014 Landsat-9 Northern CA"
+    },
+    {
+      "rel": "item",
+      "href": "./LC09_L2SP_044031_20240711_20240712_02_T1/LC09_L2SP_044031_20240711_20240712_02_T1.json",
+      "type": "application/geo+json"
+    },
+    {
+      "rel": "item",
+      "href": "./LC09_L2SP_044031_20240812_20240813_02_T1/LC09_L2SP_044031_20240812_20240813_02_T1.json",
+      "type": "application/geo+json"
+    },
+    {
+      "rel": "item",
+      "href": "./LC09_L2SP_044031_20240828_20240829_02_T1/LC09_L2SP_044031_20240828_20240829_02_T1.json",
+      "type": "application/geo+json"
+    },
+    {
+      "rel": "item",
+      "href": "./LC09_L2SP_044032_20240711_20240712_02_T1/LC09_L2SP_044032_20240711_20240712_02_T1.json",
+      "type": "application/geo+json"
+    },
+    {
+      "rel": "item",
+      "href": "./LC09_L2SP_044032_20240812_20240813_02_T1/LC09_L2SP_044032_20240812_20240813_02_T1.json",
+      "type": "application/geo+json"
+    },
+    {
+      "rel": "item",
+      "href": "./LC09_L2SP_044032_20240828_20240829_02_T1/LC09_L2SP_044032_20240828_20240829_02_T1.json",
+      "type": "application/geo+json"
+    },
+    {
+      "rel": "item",
+      "href": "./LC09_L2SP_044033_20240711_20240712_02_T1/LC09_L2SP_044033_20240711_20240712_02_T1.json",
+      "type": "application/geo+json"
+    },
+    {
+      "rel": "item",
+      "href": "./LC09_L2SP_044033_20240812_20240813_02_T1/LC09_L2SP_044033_20240812_20240813_02_T1.json",
+      "type": "application/geo+json"
+    },
+    {
+      "rel": "item",
+      "href": "./LC09_L2SP_044033_20240828_20240829_02_T1/LC09_L2SP_044033_20240828_20240829_02_T1.json",
+      "type": "application/geo+json"
+    },
+    {
+      "rel": "parent",
+      "href": "../catalog.json",
+      "type": "application/json",
+      "title": "Wildfire Vegetation Risk \u2014 Landsat-9 Northern CA"
+    }
+  ],
+  "title": "Landsat-9 Northern California Summer 2024",
+  "extent": {
+    "spatial": {
+      "bbox": [
+        [
+          -123.04466656193573,
+          37.8269148840964,
+          -119.34312526448566,
+          42.82051448319362
+        ]
+      ]
+    },
+    "temporal": {
+      "interval": [
+        [
+          "2024-07-11T18:44:16Z",
+          "2024-08-28T18:45:27Z"
+        ]
+      ]
+    }
+  },
+  "license": "proprietary",
+  "providers": [
+    {
+      "name": "USGS",
+      "roles": [
+        "producer",
+        "licensor"
+      ],
+      "url": "https://earthexplorer.usgs.gov"
+    },
+    {
+      "name": "AWS Open Data",
+      "roles": [
+        "host"
+      ],
+      "url": "https://registry.opendata.aws/usgs-landsat/"
+    }
+  ],
+  "summaries": {
+    "platform": [
+      "landsat-9"
+    ],
+    "instruments": [
+      "OLI",
+      "TIRS"
+    ],
+    "eo:bands": [
+      {
+        "name": "blue",
+        "common_name": "blue",
+        "center_wavelength": 0.482,
+        "full_width_half_max": 0.06
+      },
+      {
+        "name": "green",
+        "common_name": "green",
+        "center_wavelength": 0.562,
+        "full_width_half_max": 0.057
+      },
+      {
+        "name": "red",
+        "common_name": "red",
+        "center_wavelength": 0.655,
+        "full_width_half_max": 0.038
+      },
+      {
+        "name": "nir08",
+        "common_name": "nir08",
+        "center_wavelength": 0.865,
+        "full_width_half_max": 0.028
+      },
+      {
+        "name": "swir16",
+        "common_name": "swir16",
+        "center_wavelength": 1.61,
+        "full_width_half_max": 0.085
+      },
+      {
+        "name": "swir22",
+        "common_name": "swir22",
+        "center_wavelength": 2.2,
+        "full_width_half_max": 0.2
+      }
+    ]
+  }
+}
