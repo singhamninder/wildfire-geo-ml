@@ -7,13 +7,13 @@ from click.testing import CliRunner
 
 from tests.conftest import BANDS, SCENE_ID
 from wildfire_geo_ml.ingest.cog_convert import (
-    discover_scenes_on_disk,
     ensure_cog,
     is_valid_cog,
     main,
     process_scene,
     resolve_input_scenes,
 )
+from wildfire_geo_ml.ingest.landsat_paths import discover_scenes_on_disk
 
 VALID_OUTPUT = f"{SCENE_ID}_SR_B4.TIF is a valid cloud optimized GeoTIFF\n"
 INVALID_OUTPUT = f"{SCENE_ID}_SR_B4.TIF is NOT a valid cloud optimized GeoTIFF\n"

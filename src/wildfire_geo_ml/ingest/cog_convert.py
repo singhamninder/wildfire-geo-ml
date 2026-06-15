@@ -17,7 +17,11 @@ import click
 from tqdm import tqdm
 
 from wildfire_geo_ml.ingest.config import load_pipeline_config
-from wildfire_geo_ml.ingest.landsat_paths import filter_scenes, local_band_path
+from wildfire_geo_ml.ingest.landsat_paths import (
+    discover_scenes_on_disk,
+    filter_scenes,
+    local_band_path,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -197,30 +201,6 @@ def ensure_cog(input_path: Path, output_path: Path, *, force: bool = False) -> s
         return "failed"
 
     return "converted"
-
-
-def discover_scenes_on_disk(input_dir: Path) -> list[str]:
-    """
-    List scene IDs with SR band GeoTIFFs under ``input_dir``.
-
-    Parameters
-    ----------
-    input_dir : Path
-        Root raw-data directory (e.g. ``data/raw``).
-
-    Returns
-    -------
-    list[str]
-        Scene directory names containing at least one ``*_SR_B*.TIF`` file.
-    """
-    if not input_dir.is_dir():
-        return []
-
-    scenes: list[str] = []
-    for child in sorted(input_dir.iterdir()):
-        if child.is_dir() and any(child.glob("*_SR_B*.TIF")):
-            scenes.append(child.name)
-    return scenes
 
 
 def resolve_input_scenes(

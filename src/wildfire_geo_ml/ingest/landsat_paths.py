@@ -184,6 +184,30 @@ def local_mtl_path(output_dir: Path, scene_id: str) -> Path:
     return local_scene_dir(output_dir, scene_id) / f"{scene_id}_MTL.json"
 
 
+def discover_scenes_on_disk(input_dir: Path) -> list[str]:
+    """
+    List scene IDs with SR band GeoTIFFs under ``input_dir``.
+
+    Parameters
+    ----------
+    input_dir : Path
+        Root data directory (e.g. ``data/raw`` or ``data/cog``).
+
+    Returns
+    -------
+    list[str]
+        Scene directory names containing at least one ``*_SR_B*.TIF`` file.
+    """
+    if not input_dir.is_dir():
+        return []
+
+    scenes: list[str] = []
+    for child in sorted(input_dir.iterdir()):
+        if child.is_dir() and any(child.glob("*_SR_B*.TIF")):
+            scenes.append(child.name)
+    return scenes
+
+
 def filter_scenes(
     scenes: list[str],
     wrs_path: str | None = None,
