@@ -11,13 +11,12 @@ equivalent) before running. Data-transfer charges apply to your AWS account.
 """
 
 import logging
-import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Protocol, cast
 
 import boto3
-import click
+import typer
 from botocore.exceptions import ClientError, NoCredentialsError
 from dotenv import load_dotenv
 from tqdm import tqdm
@@ -257,84 +256,78 @@ def run_download(
 
 def _print_discovery_table(scenes: list[DiscoveredScene]) -> None:
     """Print discovered scenes with cloud cover and WRS path/row."""
-    click.echo("\nDiscovered scenes:")
-    click.echo(f"{'Scene ID':<45} {'Cloud%':<8} {'Path/Row':<10} {'Date':<10}")
-    click.echo("-" * 75)
+    typer.echo("\nDiscovered scenes:")
+    typer.echo(f"{'Scene ID':<45} {'Cloud%':<8} {'Path/Row':<10} {'Date':<10}")
+    typer.echo("-" * 75)
     for scene in scenes:
         path_row = f"{scene.wrs_path}/{scene.wrs_row}"
         cloud = f"{scene.cloud_cover:.1f}" if scene.cloud_cover > 0 else "n/a"
-        click.echo(f"{scene.scene_id:<45} {cloud:<8} {path_row:<10} {scene.acquisition_date:<10}")
+        typer.echo(f"{scene.scene_id:<45} {cloud:<8} {path_row:<10} {scene.acquisition_date:<10}")
 
 
 def _print_summary(reports: list[DownloadReport]) -> None:
     """Print a human-readable summary table to stdout."""
-    click.echo("\nDownload summary:")
-    click.echo(f"{'Scene':<45} {'File':<6} {'Status':<10}")
-    click.echo("-" * 65)
+    typer.echo("\nDownload summary:")
+    typer.echo(f"{'Scene':<45} {'File':<6} {'Status':<10}")
+    typer.echo("-" * 65)
     for report in reports:
         for result in report.results:
-            click.echo(f"{result.scene_id:<45} {result.label:<6} {result.status:<10}")
+            typer.echo(f"{result.scene_id:<45} {result.label:<6} {result.status:<10}")
 
 
-@click.command()
-@click.option(
-    "--config",
-    "config_path",
-    type=click.Path(path_type=Path, exists=True, dir_okay=False),
-    default=DEFAULT_CONFIG,
-    show_default=True,
-    help="Path to pipeline.yaml",
-)
-@click.option(
-    "--output-dir",
-    type=click.Path(path_type=Path, file_okay=False),
-    default=DEFAULT_OUTPUT_DIR,
-    show_default=True,
-    help="Root directory for per-scene downloads",
-)
-@click.option(
-    "--path",
-    "wrs_path",
-    default=None,
-    help="Filter by WRS-2 path (e.g. 044); defaults to config wrs_path",
-)
-@click.option(
-    "--rows",
-    multiple=True,
-    help="Filter by WRS-2 row(s), e.g. --rows 032 --rows 033",
-)
-@click.option(
-    "--dates",
-    multiple=True,
-    help="Filter by acquisition date YYYYMMDD",
-)
-@click.option(
-    "--bands",
-    default=None,
-    help="Comma-separated bands (e.g. B4,B5); defaults to config",
-)
-@click.option("--force", is_flag=True, help="Re-download files that already exist")
-@click.option(
-    "--discover-only",
-    is_flag=True,
-    help="Discover scenes over AOI and print table; do not download",
-)
-@click.option(
-    "--max-cloud-cover",
-    type=float,
-    default=None,
-    help="Override discover.max_cloud_cover (percent; scenes must be below this)",
-)
+app = typer.Typer(add_completion=False)
+
+
+@app.command()
 def main(
-    config_path: Path,
-    output_dir: Path,
-    wrs_path: str | None,
-    rows: tuple[str, ...],
-    dates: tuple[str, ...],
-    bands: str | None,
-    force: bool,
-    discover_only: bool,
-    max_cloud_cover: float | None,
+    config_path: Path = typer.Option(
+        DEFAULT_CONFIG,
+        "--config",
+        exists=True,
+        dir_okay=False,
+        help="Path to pipeline.yaml",
+    ),
+    output_dir: Path = typer.Option(
+        DEFAULT_OUTPUT_DIR,
+        "--output-dir",
+        file_okay=False,
+        help="Root directory for per-scene downloads",
+    ),
+    wrs_path: str | None = typer.Option(
+        None,
+        "--path",
+        help="Filter by WRS-2 path (e.g. 044); defaults to config wrs_path",
+    ),
+    rows: list[str] = typer.Option(
+        [],
+        "--rows",
+        help="Filter by WRS-2 row(s), e.g. --rows 032 --rows 033",
+    ),
+    dates: list[str] = typer.Option(
+        [],
+        "--dates",
+        help="Filter by acquisition date YYYYMMDD",
+    ),
+    bands: str | None = typer.Option(
+        None,
+        "--bands",
+        help="Comma-separated bands (e.g. B4,B5); defaults to config",
+    ),
+    force: bool = typer.Option(
+        False,
+        "--force",
+        help="Re-download files that already exist",
+    ),
+    discover_only: bool = typer.Option(
+        False,
+        "--discover-only",
+        help="Discover scenes over AOI and print table; do not download",
+    ),
+    max_cloud_cover: float | None = typer.Option(
+        None,
+        "--max-cloud-cover",
+        help="Override discover.max_cloud_cover (percent; scenes must be below this)",
+    ),
 ) -> None:
     """
     Download Landsat-9 SR bands and MTL JSON from s3://usgs-landsat.
@@ -374,17 +367,17 @@ def main(
             dates=date_filter,
         )
     except ValueError as exc:
-        click.echo(f"Error: {exc}", err=True)
-        sys.exit(1)
+        typer.echo(f"Error: {exc}", err=True)
+        raise typer.Exit(1) from exc
 
     if discover_only:
         _print_discovery_table(discovered)
-        click.echo(f"\n{len(discovered)} scene(s) matched filters.")
+        typer.echo(f"\n{len(discovered)} scene(s) matched filters.")
         return
 
     if not discovered:
-        click.echo("No scenes matched the filters; nothing to download.", err=True)
-        sys.exit(1)
+        typer.echo("No scenes matched the filters; nothing to download.", err=True)
+        raise typer.Exit(1)
 
     for scene in discovered:
         logger.info(
@@ -411,9 +404,9 @@ def main(
 
     total_failed = sum(len(r.failed) for r in reports)
     if total_failed:
-        click.echo(f"\n{total_failed} file(s) failed.", err=True)
-        sys.exit(1)
+        typer.echo(f"\n{total_failed} file(s) failed.", err=True)
+        raise typer.Exit(1)
 
 
 if __name__ == "__main__":
-    main()
+    app()

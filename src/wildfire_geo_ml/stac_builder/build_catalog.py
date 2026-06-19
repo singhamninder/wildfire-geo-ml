@@ -7,13 +7,12 @@ query it with pystac or pystac_client just like a dynamic STAC API.
 """
 
 import logging
-import sys
 from datetime import UTC, datetime
 from pathlib import Path
 
-import click
 import pystac
 import rasterio
+import typer
 from pystac.extensions.eo import Band, EOExtension
 from pystac.extensions.projection import ProjectionExtension
 from pystac.extensions.view import ViewExtension
@@ -488,66 +487,56 @@ def resolve_catalog_scenes(
     )
 
 
-@click.command()
-@click.option(
-    "--config",
-    "config_path",
-    type=click.Path(path_type=Path, exists=True, dir_okay=False),
-    default=DEFAULT_CONFIG,
-    show_default=True,
-    help="Path to pipeline.yaml",
-)
-@click.option(
-    "--cog-dir",
-    type=click.Path(path_type=Path, file_okay=False),
-    default=DEFAULT_COG_DIR,
-    show_default=True,
-    help="Root directory for validated COG outputs",
-)
-@click.option(
-    "--raw-dir",
-    type=click.Path(path_type=Path, file_okay=False),
-    default=DEFAULT_RAW_DIR,
-    show_default=True,
-    help="Root directory for MTL JSON metadata",
-)
-@click.option(
-    "--output-dir",
-    type=click.Path(path_type=Path, file_okay=False),
-    default=DEFAULT_OUTPUT_DIR,
-    show_default=True,
-    help="Directory for STAC catalog JSON output",
-)
-@click.option(
-    "--path",
-    "wrs_path",
-    default=None,
-    help="Filter by WRS-2 path (e.g. 044); defaults to config wrs_path",
-)
-@click.option(
-    "--rows",
-    multiple=True,
-    help="Filter by WRS-2 row(s), e.g. --rows 032 --rows 033",
-)
-@click.option(
-    "--dates",
-    multiple=True,
-    help="Filter by acquisition date YYYYMMDD",
-)
-@click.option(
-    "--local-hrefs",
-    is_flag=True,
-    help="Use local COG paths for asset hrefs instead of s3://usgs-landsat",
-)
+app = typer.Typer(add_completion=False)
+
+
+@app.command()
 def main(
-    config_path: Path,
-    cog_dir: Path,
-    raw_dir: Path,
-    output_dir: Path,
-    wrs_path: str | None,
-    rows: tuple[str, ...],
-    dates: tuple[str, ...],
-    local_hrefs: bool,
+    config_path: Path = typer.Option(
+        DEFAULT_CONFIG,
+        "--config",
+        exists=True,
+        dir_okay=False,
+        help="Path to pipeline.yaml",
+    ),
+    cog_dir: Path = typer.Option(
+        DEFAULT_COG_DIR,
+        "--cog-dir",
+        file_okay=False,
+        help="Root directory for validated COG outputs",
+    ),
+    raw_dir: Path = typer.Option(
+        DEFAULT_RAW_DIR,
+        "--raw-dir",
+        file_okay=False,
+        help="Root directory for MTL JSON metadata",
+    ),
+    output_dir: Path = typer.Option(
+        DEFAULT_OUTPUT_DIR,
+        "--output-dir",
+        file_okay=False,
+        help="Directory for STAC catalog JSON output",
+    ),
+    wrs_path: str | None = typer.Option(
+        None,
+        "--path",
+        help="Filter by WRS-2 path (e.g. 044); defaults to config wrs_path",
+    ),
+    rows: list[str] = typer.Option(
+        [],
+        "--rows",
+        help="Filter by WRS-2 row(s), e.g. --rows 032 --rows 033",
+    ),
+    dates: list[str] = typer.Option(
+        [],
+        "--dates",
+        help="Filter by acquisition date YYYYMMDD",
+    ),
+    local_hrefs: bool = typer.Option(
+        False,
+        "--local-hrefs",
+        help="Use local COG paths for asset hrefs instead of s3://usgs-landsat",
+    ),
 ) -> None:
     """
     Build a self-contained STAC catalog from Landsat-9 COG scenes.
@@ -573,11 +562,11 @@ def main(
     )
 
     if not scene_ids:
-        click.echo(
+        typer.echo(
             f"No scenes with COG bands found under {cog_dir} matching filters.",
             err=True,
         )
-        sys.exit(1)
+        raise typer.Exit(1)
 
     catalog = build_catalog_from_dirs(
         cog_dir,
@@ -589,10 +578,10 @@ def main(
     )
 
     item_count = len(list(catalog.get_items(recursive=True)))
-    click.echo(f"\nSTAC catalog written to {output_dir / 'catalog.json'}")
-    click.echo(f"  Items: {item_count}")
-    click.echo(f"  Asset hrefs: {'local' if local_hrefs else 's3://' + ingest.bucket}")
+    typer.echo(f"\nSTAC catalog written to {output_dir / 'catalog.json'}")
+    typer.echo(f"  Items: {item_count}")
+    typer.echo(f"  Asset hrefs: {'local' if local_hrefs else 's3://' + ingest.bucket}")
 
 
 if __name__ == "__main__":
-    main()
+    app()

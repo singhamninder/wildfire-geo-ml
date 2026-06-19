@@ -16,3 +16,23 @@ ingest:
   collection_prefix: collection02/level-2/standard/oli-tirs
   bands: [B2, B3, B4, B5, B6, B7]
   wrs_path: "044"
+
+features:
+  h3_resolution: 8
+  stat_names: [mean, std]
+  required_bands: [B3, B4, B5, B7]
+  output_dir: data/features/h3_partitioned
+  indices_dir: data/indices
+
+sedona:
+  app_name: wildfire-veg-risk
+  jar_packages: "org.apache.sedona:sedona-spark-4.0_2.13:1.9.0,org.datasyslab:geotools-wrapper:1.9.0-33.5"
+  shuffle_partitions: 8
+  corridor_output_dir: data/features/corridor_partitioned
+  hex_output_dir: data/features/sedona_hex_partitioned
+
+corridors:
+  rest_service_url: "https://services3.arcgis.com/fdvHcZVg9AaNmcTr/arcgis/rest/services/California_Electric_Transmission_Lines/FeatureServer/0/query"
+  cached_geojson: data/raw/cec_transmission_lines.geojson
+  buffer_m: 100
+  metric_crs: "EPSG:32610"

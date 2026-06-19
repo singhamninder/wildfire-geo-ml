@@ -3,13 +3,13 @@
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-from click.testing import CliRunner
+from typer.testing import CliRunner
 
 from tests.conftest import BANDS, SCENE_ID
 from wildfire_geo_ml.ingest.cog_convert import (
+    app,
     ensure_cog,
     is_valid_cog,
-    main,
     process_scene,
     resolve_input_scenes,
 )
@@ -195,7 +195,7 @@ def test_cli_smoke(
 
     runner = CliRunner()
     result = runner.invoke(
-        main,
+        app,
         [
             "--config",
             str(pipeline_config_path),
@@ -234,7 +234,7 @@ def test_cli_exits_on_failure(
 
     runner = CliRunner()
     result = runner.invoke(
-        main,
+        app,
         [
             "--config",
             str(pipeline_config_path),

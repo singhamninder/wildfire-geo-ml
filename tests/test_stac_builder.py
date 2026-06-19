@@ -8,19 +8,19 @@ from unittest.mock import MagicMock, patch
 import numpy as np
 import pytest
 import rasterio
-from click.testing import CliRunner
 from rasterio.transform import from_origin
+from typer.testing import CliRunner
 
 from tests.conftest import BANDS, COLLECTION_PREFIX, SCENE_ID
 from wildfire_geo_ml.ingest.config import IngestConfig
 from wildfire_geo_ml.ingest.landsat_paths import local_band_path, local_mtl_path, sr_band_key
 from wildfire_geo_ml.stac_builder.build_catalog import (
+    app,
     build_and_save_catalog,
     build_catalog_from_dirs,
     collect_cog_paths,
     create_collection,
     create_item_from_cog,
-    main,
     resolve_catalog_scenes,
 )
 from wildfire_geo_ml.stac_builder.mtl_parser import parse_mtl_dict, parse_mtl_file
@@ -232,7 +232,7 @@ def test_cli_smoke(tmp_path: Path, pipeline_config_path: Path) -> None:
     ) as mock_build:
         runner = CliRunner()
         result = runner.invoke(
-            main,
+            app,
             [
                 "--config",
                 str(pipeline_config_path),

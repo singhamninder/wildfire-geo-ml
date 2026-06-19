@@ -35,9 +35,9 @@ dependencies = [
     # Dask for large array processing
     "dask[distributed]>=2024.3.0",
 
-    # Apache Sedona
-    "apache-sedona[spark]>=1.6.0",
-    "pyspark>=3.5.1",
+    # Apache Sedona (pinned stack: Sedona 1.9.0 + PySpark 4.1 / Spark 4 / Scala 2.13)
+    "apache-sedona[spark]>=1.9.0",
+    "pyspark>=4.1.1",
 
     # ML
     "lightgbm>=4.3.0",
@@ -54,7 +54,7 @@ dependencies = [
     "numpy>=1.26.4",
     "pandas>=2.2.1",
     "tqdm>=4.66.2",
-    "click>=8.1.7",
+    "typer>=0.15.0",
     "pydantic>=2.6.0",  # typed config models for config/*.yaml
     "pyyaml>=6.0.1",
 ]
@@ -115,6 +115,14 @@ select = [
 [tool.ruff.lint.isort]
 known-first-party = ["wildfire_geo_ml"]
 
+[tool.ruff.lint.per-file-ignores]
+# Typer/FastAPI-style dependency injection uses calls in parameter defaults.
+"src/wildfire_geo_ml/ingest/cog_convert.py" = ["B008"]
+"src/wildfire_geo_ml/ingest/download_landsat.py" = ["B008"]
+"src/wildfire_geo_ml/stac_builder/build_catalog.py" = ["B008"]
+"src/wildfire_geo_ml/features/h3_partition.py" = ["B008"]
+"src/wildfire_geo_ml/sedona/cli.py" = ["B008"]
+
 [tool.ruff.format]
 docstring-code-format = true
 
@@ -133,9 +141,10 @@ include = ["src"]
 # ---------------------------------------------------------------------------
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = "-v --tb=short -m 'not network'"
+addopts = "-v --tb=short -m 'not network and not slow'"
 markers = [
     "network: tests that call external APIs (run with pytest -m network)",
+    "slow: tests that start a local Spark/Sedona session (run with pytest -m slow)",
 ]
 filterwarnings = [
     "ignore::DeprecationWarning:pystac",

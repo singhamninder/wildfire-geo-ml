@@ -54,12 +54,89 @@ class IngestConfig(BaseModel):
     wrs_path: str = "044"
 
 
+class FeaturesConfig(BaseModel):
+    """H3 feature engineering settings from ``config/pipeline.yaml``."""
+
+    h3_resolution: int = Field(
+        default=8,
+        description="H3 resolution for zonal stats (~461 m edge at res 8).",
+    )
+    stat_names: list[str] = Field(
+        default_factory=lambda: ["mean", "std"],
+        description="Zonal statistics to compute per H3 cell.",
+    )
+    required_bands: list[str] = Field(
+        default_factory=lambda: ["B3", "B4", "B5", "B7"],
+        description="Bands required for NDVI, NBR, and NDWI.",
+    )
+    output_dir: str = Field(
+        default="data/features/h3_partitioned",
+        description="Directory for H3-partitioned GeoParquet output.",
+    )
+    indices_dir: str = Field(
+        default="data/indices",
+        description="Directory for per-scene NDVI/NBR/NDWI index COGs consumed by Sedona.",
+    )
+
+    @field_validator("h3_resolution")
+    @classmethod
+    def validate_h3_resolution(cls, value: int) -> int:
+        if not 0 <= value <= 15:
+            msg = f"h3_resolution must be between 0 and 15, got {value}"
+            raise ValueError(msg)
+        return value
+
+
+class SedonaConfig(BaseModel):
+    """Apache Sedona / Spark settings from ``config/pipeline.yaml``."""
+
+    app_name: str = "wildfire-veg-risk"
+    jar_packages: str = (
+        "org.apache.sedona:sedona-spark-4.0_2.13:1.9.0,org.datasyslab:geotools-wrapper:1.9.0-33.5"
+    )
+    shuffle_partitions: int = Field(
+        default=8,
+        description="spark.sql.shuffle.partitions for local laptop runs.",
+    )
+    corridor_output_dir: str = Field(
+        default="data/features/corridor_partitioned",
+        description="GeoParquet output for corridor zonal statistics.",
+    )
+    hex_output_dir: str = Field(
+        default="data/features/sedona_hex_partitioned",
+        description="Optional Sedona hex zonal statistics output (EMR demo).",
+    )
+
+
+class CorridorsConfig(BaseModel):
+    """Transmission-line corridor settings from ``config/pipeline.yaml``."""
+
+    rest_service_url: str = Field(
+        description="ArcGIS REST query endpoint for CEC transmission lines.",
+    )
+    cached_geojson: str = Field(
+        default="data/raw/cec_transmission_lines.geojson",
+        description="Local cache path for AOI-filtered line GeoJSON.",
+    )
+    buffer_m: float = Field(
+        default=100.0,
+        description="Corridor buffer distance in meters (metric CRS).",
+    )
+    metric_crs: str = Field(
+        default="EPSG:32610",
+        description="Metric CRS for buffering before zonal stats.",
+    )
+
+
 class PipelineConfig(BaseModel):
     """Top-level pipeline configuration."""
 
     study_area: StudyAreaConfig
     discover: DiscoverConfig
     ingest: IngestConfig
+    features: FeaturesConfig = Field(default_factory=FeaturesConfig)
+    sedona: SedonaConfig = Field(default_factory=SedonaConfig)
+    corridors: CorridorsConfig | None = None
 
 
 def load_pipeline_config(config_path: Path) -> PipelineConfig:

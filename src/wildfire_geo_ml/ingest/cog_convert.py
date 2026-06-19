@@ -9,11 +9,10 @@ the STAC catalog and Sedona zonal stats in later phases.
 import logging
 import shutil
 import subprocess
-import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 
-import click
+import typer
 from tqdm import tqdm
 
 from wildfire_geo_ml.ingest.config import load_pipeline_config
@@ -320,68 +319,63 @@ def run_cog_convert(
 
 def _print_summary(reports: list[CogSceneReport]) -> None:
     """Print a human-readable summary table to stdout."""
-    click.echo("\nCOG summary:")
-    click.echo(f"{'Scene':<45} {'Band':<6} {'Status':<10}")
-    click.echo("-" * 65)
+    typer.echo("\nCOG summary:")
+    typer.echo(f"{'Scene':<45} {'Band':<6} {'Status':<10}")
+    typer.echo("-" * 65)
     for report in reports:
         for result in report.results:
-            click.echo(f"{result.scene_id:<45} {result.label:<6} {result.status:<10}")
+            typer.echo(f"{result.scene_id:<45} {result.label:<6} {result.status:<10}")
 
 
-@click.command()
-@click.option(
-    "--config",
-    "config_path",
-    type=click.Path(path_type=Path, exists=True, dir_okay=False),
-    default=DEFAULT_CONFIG,
-    show_default=True,
-    help="Path to pipeline.yaml",
-)
-@click.option(
-    "--input-dir",
-    type=click.Path(path_type=Path, file_okay=False),
-    default=DEFAULT_INPUT_DIR,
-    show_default=True,
-    help="Root directory for per-scene raw downloads",
-)
-@click.option(
-    "--output-dir",
-    type=click.Path(path_type=Path, file_okay=False),
-    default=DEFAULT_OUTPUT_DIR,
-    show_default=True,
-    help="Root directory for validated COG outputs",
-)
-@click.option(
-    "--path",
-    "wrs_path",
-    default=None,
-    help="Filter by WRS-2 path (e.g. 044); defaults to config wrs_path",
-)
-@click.option(
-    "--rows",
-    multiple=True,
-    help="Filter by WRS-2 row(s), e.g. --rows 032 --rows 033",
-)
-@click.option(
-    "--dates",
-    multiple=True,
-    help="Filter by acquisition date YYYYMMDD",
-)
-@click.option(
-    "--bands",
-    default=None,
-    help="Comma-separated bands (e.g. B4,B5); defaults to config",
-)
-@click.option("--force", is_flag=True, help="Re-process files that already validate as COG")
+app = typer.Typer(add_completion=False)
+
+
+@app.command()
 def main(
-    config_path: Path,
-    input_dir: Path,
-    output_dir: Path,
-    wrs_path: str | None,
-    rows: tuple[str, ...],
-    dates: tuple[str, ...],
-    bands: str | None,
-    force: bool,
+    config_path: Path = typer.Option(
+        DEFAULT_CONFIG,
+        "--config",
+        exists=True,
+        dir_okay=False,
+        help="Path to pipeline.yaml",
+    ),
+    input_dir: Path = typer.Option(
+        DEFAULT_INPUT_DIR,
+        "--input-dir",
+        file_okay=False,
+        help="Root directory for per-scene raw downloads",
+    ),
+    output_dir: Path = typer.Option(
+        DEFAULT_OUTPUT_DIR,
+        "--output-dir",
+        file_okay=False,
+        help="Root directory for validated COG outputs",
+    ),
+    wrs_path: str | None = typer.Option(
+        None,
+        "--path",
+        help="Filter by WRS-2 path (e.g. 044); defaults to config wrs_path",
+    ),
+    rows: list[str] = typer.Option(
+        [],
+        "--rows",
+        help="Filter by WRS-2 row(s), e.g. --rows 032 --rows 033",
+    ),
+    dates: list[str] = typer.Option(
+        [],
+        "--dates",
+        help="Filter by acquisition date YYYYMMDD",
+    ),
+    bands: str | None = typer.Option(
+        None,
+        "--bands",
+        help="Comma-separated bands (e.g. B4,B5); defaults to config",
+    ),
+    force: bool = typer.Option(
+        False,
+        "--force",
+        help="Re-process files that already validate as COG",
+    ),
 ) -> None:
     """
     Validate-first COG ingestion for Landsat-9 SR bands.
@@ -408,11 +402,11 @@ def main(
     )
 
     if not scene_ids:
-        click.echo(
+        typer.echo(
             f"No scenes with SR bands found under {input_dir} matching filters.",
             err=True,
         )
-        sys.exit(1)
+        raise typer.Exit(1)
 
     band_list = ingest.bands
     if bands:
@@ -429,9 +423,9 @@ def main(
 
     total_failed = sum(len(r.failed) for r in reports)
     if total_failed:
-        click.echo(f"\n{total_failed} file(s) failed.", err=True)
-        sys.exit(1)
+        typer.echo(f"\n{total_failed} file(s) failed.", err=True)
+        raise typer.Exit(1)
 
 
 if __name__ == "__main__":
-    main()
+    app()
