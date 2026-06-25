@@ -68,12 +68,50 @@ def load_index_rasters(
     paths_df = spark.createDataFrame(index_rows, ["scene_id", "index_name", "cog_path"])
     cog_paths = [row[2] for row in index_rows]
     binary_df = spark.read.format("binaryFile").load(cog_paths)
-    binary_df = binary_df.withColumnRenamed("path", "cog_path")
+    binary_df = binary_df.withColumn(
+        "cog_path",
+        F.regexp_replace(F.col("path"), r"^file:", ""),
+    )
     return (
         binary_df.join(paths_df, on="cog_path", how="inner")
         .withColumn("raster", F.expr("RS_FromGeoTiff(content)"))
         .select("scene_id", "index_name", "cog_path", "raster")
     )
+
+
+def _geojson_property_fields(features_df: DataFrame) -> list[str]:
+    """Return property field names from an exploded GeoJSON features DataFrame."""
+    if "properties" not in features_df.columns:
+        return []
+    props_type = features_df.schema["properties"].dataType
+    field_names = getattr(props_type, "fieldNames", None)
+    if callable(field_names):
+        return list(field_names())
+    return []
+
+
+def _load_geojson_features(spark: SparkSession, geojson_path: Path) -> DataFrame:
+    """
+    Load a GeoJSON file as one row per feature with ``geometry`` and ``properties``.
+
+    Sedona's GeoJSON reader returns FeatureCollections with a ``features`` array;
+    this helper explodes that array so downstream SQL can reference ``geometry``.
+    """
+    raw_df = spark.read.format("geojson").load(str(geojson_path))
+    if "features" in raw_df.columns:
+        return raw_df.select(F.explode("features").alias("feature")).select(
+            F.col("feature.geometry").alias("geometry"),
+            F.col("feature.properties").alias("properties"),
+        )
+    if "geometry" in raw_df.columns:
+        return raw_df.select("geometry", F.col("properties"))
+    msg = f"GeoJSON at {geojson_path} has no features or geometry columns"
+    raise ValueError(msg)
+
+
+def _with_wgs84_srid(features_df: DataFrame) -> DataFrame:
+    """Assign EPSG:4326 to geometries loaded from GeoJSON (no embedded SRID)."""
+    return features_df.withColumn("geometry", F.expr("ST_SetSRID(geometry, 4326)"))
 
 
 def load_corridor_regions(
@@ -82,6 +120,7 @@ def load_corridor_regions(
     *,
     buffer_m: float,
     metric_crs: str,
+    clip_bbox_wgs84: tuple[float, float, float, float] | None = None,
 ) -> DataFrame:
     """
     Load transmission lines and buffer them for corridor zonal statistics.
@@ -96,6 +135,8 @@ def load_corridor_regions(
         Buffer distance in meters.
     metric_crs : str
         Metric CRS used for buffering (e.g. EPSG:32610).
+    clip_bbox_wgs84 : tuple[float, float, float, float], optional
+        When set, keep only lines intersecting this WGS84 bbox before buffering.
 
     Returns
     -------
@@ -106,12 +147,15 @@ def load_corridor_regions(
         msg = f"Transmission line GeoJSON not found: {geojson_path}"
         raise FileNotFoundError(msg)
 
-    lines_df = spark.read.format("geojson").load(str(geojson_path))
-    id_col = "OBJECTID" if "OBJECTID" in lines_df.columns else None
-    if id_col is None:
-        lines_df = lines_df.withColumn("region_id", F.monotonically_increasing_id().cast("string"))
+    lines_df = _with_wgs84_srid(_load_geojson_features(spark, geojson_path))
+    prop_fields = _geojson_property_fields(lines_df)
+    if "OBJECTID" in prop_fields:
+        lines_df = lines_df.withColumn("region_id", F.col("properties.OBJECTID").cast("string"))
     else:
-        lines_df = lines_df.withColumn("region_id", F.col(id_col).cast("string"))
+        lines_df = lines_df.withColumn("region_id", F.monotonically_increasing_id().cast("string"))
+
+    if clip_bbox_wgs84 is not None:
+        lines_df = filter_regions_to_wgs84_bbox(lines_df, clip_bbox_wgs84)
 
     buffer_expr = (
         f"ST_Transform("
@@ -130,6 +174,7 @@ def load_hex_regions(
     geojson_path: Path,
     *,
     h3_resolution: int,
+    metric_crs: str | None = None,
 ) -> DataFrame:
     """
     Load H3 hex polygons exported as GeoJSON for optional Sedona hex zonal stats.
@@ -142,6 +187,8 @@ def load_hex_regions(
         GeoJSON file with hex geometries and ``h3_index`` property.
     h3_resolution : int
         H3 resolution used for ``h3_res8`` partition column naming.
+    metric_crs : str, optional
+        When set, reproject hex polygons to this CRS so they align with UTM index COGs.
 
     Returns
     -------
@@ -152,14 +199,50 @@ def load_hex_regions(
         msg = f"Hex region GeoJSON not found: {geojson_path}"
         raise FileNotFoundError(msg)
 
-    hex_df = spark.read.format("geojson").load(str(geojson_path))
-    id_col = "h3_index" if "h3_index" in hex_df.columns else "region_id"
+    hex_df = _with_wgs84_srid(_load_geojson_features(spark, geojson_path))
+    prop_fields = _geojson_property_fields(hex_df)
+    if "h3_index" in prop_fields:
+        id_expr = F.col("properties.h3_index").cast("string")
+    elif "region_id" in prop_fields:
+        id_expr = F.col("properties.region_id").cast("string")
+    else:
+        id_expr = F.monotonically_increasing_id().cast("string")
     partition_col = f"h3_res{h3_resolution}"
+    if metric_crs is not None:
+        hex_df = hex_df.withColumn("geometry", F.expr(f"ST_Transform(geometry, '{metric_crs}')"))
     return (
-        hex_df.withColumn("region_id", F.col(id_col).cast("string"))
-        .withColumn(partition_col, F.col(id_col).cast("string"))
+        hex_df.withColumn("region_id", id_expr)
+        .withColumn(partition_col, id_expr)
         .withColumn("region_kind", F.lit("hex"))
         .select("region_id", "geometry", "region_kind", partition_col)
+    )
+
+
+def filter_regions_to_wgs84_bbox(
+    regions_df: DataFrame,
+    bbox_wgs84: tuple[float, float, float, float],
+) -> DataFrame:
+    """
+    Keep only region geometries that intersect a WGS84 bounding box.
+
+    Parameters
+    ----------
+    regions_df : DataFrame
+        Regions with a ``geometry`` column.
+    bbox_wgs84 : tuple[float, float, float, float]
+        Bounding box as (west, south, east, north).
+
+    Returns
+    -------
+    DataFrame
+        Filtered regions.
+    """
+    west, south, east, north = bbox_wgs84
+    bbox_wkt = (
+        f"POLYGON(({west} {south}, {east} {south}, {east} {north}, {west} {north}, {west} {south}))"
+    )
+    return regions_df.filter(
+        F.expr(f"ST_Intersects(geometry, ST_SetSRID(ST_GeomFromWKT('{bbox_wkt}'), 4326))")
     )
 
 
@@ -193,7 +276,9 @@ def compute_region_zonal_stats(
         Long-format stats with ``region_kind``, ``scene_id``, ``index_name``,
         requested statistics, and optional ``h3_res8`` partition column.
     """
-    joined = rasters_df.crossJoin(F.broadcast(regions_df))
+    joined = rasters_df.crossJoin(F.broadcast(regions_df)).filter(
+        F.expr("ST_Intersects(RS_Envelope(raster), geometry)")
+    )
     stats_df = joined.withColumn(
         "stats",
         F.expr("RS_ZonalStatsAll(raster, geometry, 1, true, true)"),
@@ -312,20 +397,34 @@ def run_zonal_stats_job(
         Output directory path.
     """
     index_rows = discover_index_cog_paths(indices_dir)
-    rasters_df = load_index_rasters(spark, index_rows)
-    long_df = compute_region_zonal_stats(
-        rasters_df,
-        regions_df,
-        region_kind=region_kind,
-        stat_names=stat_names,
-        h3_resolution=h3_resolution,
-    )
-    wide_df = pivot_index_stats(long_df, stat_names)
+    scene_ids = sorted({row[0] for row in index_rows})
+    geom_df = regions_df.select("region_id", "geometry")
+    partition_col = f"h3_res{h3_resolution}" if h3_resolution is not None else None
 
-    writer = wide_df.write.mode("overwrite").format("geoparquet")
-    if region_kind == "hex" and h3_resolution is not None:
-        writer = writer.partitionBy(f"h3_res{h3_resolution}")
-    writer.save(str(output_dir))
+    for scene_index, scene_id in enumerate(scene_ids):
+        scene_rows = [row for row in index_rows if row[0] == scene_id]
+        long_parts: list[DataFrame] = []
+        for index_row in scene_rows:
+            rasters_df = load_index_rasters(spark, [index_row])
+            long_parts.append(
+                compute_region_zonal_stats(
+                    rasters_df,
+                    regions_df,
+                    region_kind=region_kind,
+                    stat_names=stat_names,
+                    h3_resolution=h3_resolution,
+                )
+            )
+        long_df = long_parts[0]
+        for part in long_parts[1:]:
+            long_df = long_df.unionByName(part)
+        wide_df = pivot_index_stats(long_df, stat_names).join(geom_df, on="region_id", how="left")
+
+        write_mode = "overwrite" if scene_index == 0 else "append"
+        writer = wide_df.write.mode(write_mode).format("geoparquet")
+        if region_kind == "hex" and partition_col is not None:
+            writer = writer.partitionBy(partition_col)
+        writer.save(str(output_dir))
     return output_dir
 
 

@@ -67,7 +67,7 @@
 | 0 — Repo setup | Complete | uv, pre-commit, `.env.example` |
 | 1 — STAC catalog | Complete | Landsat ingest, validate-first COG, pystac build, stac-validator, notebook round-trip |
 | 2 — H3 features | Complete | NDVI/NBR/NDWI, H3 polyfill, GeoParquet, `notebooks/02_*`, `tests/test_{indices,h3_utils,zonal_stats,h3_partition}.py` |
-| 3 — Sedona zonal stats | Planned | RS_ZonalStats over line buffers |
+| 3 — Sedona zonal stats | Complete | RS_ZonalStats over corridor buffers + optional H3 hexes; `notebooks/03_*`, `tests/test_{corridors,sedona_config,sedona_session,zonal_stats_job}.py` |
 | 4 — ML risk scorer | Planned | LightGBM, spatial block CV, MLflow, SHAP |
 | 5 — Lambda trigger | Planned | S3 PUT → COG validate → EMR Serverless |
 
@@ -175,13 +175,37 @@ uv run python -m wildfire_geo_ml.features.h3_partition \
 uv run jupyter execute notebooks/02_explore_h3_features.ipynb
 ```
 
-### Phase 3: Sedona Zonal Stats *(planned — not yet implemented)*
+### Phase 3: Sedona Zonal Stats
+
+Requires **Java 17+** (`export JAVA_HOME="$(brew --prefix openjdk@17)/libexec/openjdk.jdk/Contents/Home"`).
 
 ```bash
-uv run python -m wildfire_geo_ml.sedona.zonal_stats_job \
+# Corridor stats (primary deliverable) — writes data/features/corridor_partitioned
+uv run python -m wildfire_geo_ml.sedona.cli \
+    --config config/pipeline.yaml \
     --cog-dir data/cog/ \
-    --lines-path data/vector/transmission_lines.gpkg \
-    --output data/features/sedona_zonal_stats.parquet
+    --region corridor
+
+# Optional: H3 hex stats (h3_res8-partitioned) — writes data/features/sedona_hex_partitioned
+uv run python -m wildfire_geo_ml.sedona.cli \
+    --config config/pipeline.yaml \
+    --cog-dir data/cog/ \
+    --region hex \
+    --no-prepare-indices
+
+# Filter to one scene/date
+uv run python -m wildfire_geo_ml.sedona.cli \
+    --config config/pipeline.yaml \
+    --cog-dir data/cog/ \
+    --rows 032 --dates 20240711 \
+    --region corridor \
+    --no-fetch-lines --no-prepare-indices
+
+# Sedona zonal-stats notebook (self-contained synthetic demo)
+uv run jupyter execute notebooks/03_sedona_zonal_stats.ipynb
+
+# Slow integration tests (Java 17)
+uv run pytest tests/test_sedona_session.py tests/test_zonal_stats_job.py -v -m slow
 ```
 
 ### Phase 4: Train Risk Scorer *(planned — not yet implemented)*
@@ -230,7 +254,7 @@ wildfire-geo-ml/
 │       ├── ingest/          # download_landsat, discover_scenes, cog_convert, …
 │       ├── stac_builder/    # build_catalog, mtl_parser
 │       ├── features/        # indices, h3_utils, zonal_stats, h3_partition CLI
-│       ├── sedona/          # (planned) Apache Sedona distributed zonal stats
+│       ├── sedona/          # SedonaContext, corridor/hex RS_ZonalStats CLI
 │       ├── ml/              # (planned) LightGBM + spatial CV + MLflow + SHAP
 │       └── lambda_trigger/  # (planned) AWS Lambda S3 event handler
 ├── tests/

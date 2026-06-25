@@ -4,11 +4,13 @@ Typer CLI for Sedona corridor and optional hex zonal statistics.
 
 from __future__ import annotations
 
+import json
 import logging
 from pathlib import Path
 from typing import Literal
 
 import typer
+from shapely.geometry import mapping
 
 from wildfire_geo_ml.features.h3_partition import (
     collect_required_cog_paths,
@@ -21,7 +23,11 @@ from wildfire_geo_ml.features.h3_utils import (
     h3_cells_to_geodataframe,
     polyfill_bbox,
 )
-from wildfire_geo_ml.features.indices import load_scene_indices, write_scene_index_cogs
+from wildfire_geo_ml.features.indices import (
+    clip_array_to_wgs84_bbox,
+    load_scene_indices,
+    write_scene_index_cogs,
+)
 from wildfire_geo_ml.ingest.config import PipelineConfig, load_pipeline_config
 from wildfire_geo_ml.sedona.corridors import fetch_transmission_lines
 from wildfire_geo_ml.sedona.session import create_sedona_session
@@ -73,11 +79,16 @@ def prepare_index_cogs(
     """
     out_dir = indices_dir or Path(pipeline.features.indices_dir)
     features = pipeline.features
+    study_bbox = coerce_bbox4(pipeline.study_area.bbox)
     for scene_id in scene_ids:
         logger.info("Writing index COGs for scene %s", scene_id)
         cog_paths = collect_required_cog_paths(cog_dir, scene_id, features.required_bands)
         index_arrays = load_scene_indices(cog_paths)
-        write_scene_index_cogs(index_arrays, out_dir, scene_id)
+        clipped = {
+            name: clip_array_to_wgs84_bbox(array, study_bbox)
+            for name, array in index_arrays.items()
+        }
+        write_scene_index_cogs(clipped, out_dir, scene_id)
     return out_dir
 
 
@@ -114,7 +125,17 @@ def export_hex_regions_geojson(
     scene_cells = filter_cells_to_extent(study_cells, scene_bbox)
     hex_gdf = h3_cells_to_geodataframe(scene_cells)
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    hex_gdf.to_file(output_path, driver="GeoJSON")
+    features = [
+        {
+            "type": "Feature",
+            "geometry": mapping(row.geometry),
+            "properties": {"h3_index": str(row["h3_index"])},
+        }
+        for _, row in hex_gdf.iterrows()
+        if row.geometry is not None and not row.geometry.is_empty
+    ]
+    payload = {"type": "FeatureCollection", "features": features}
+    output_path.write_text(json.dumps(payload), encoding="utf-8")
     return output_path
 
 
@@ -245,11 +266,22 @@ def main(
         stat_names = list(pipeline.features.stat_names)
         if region in ("corridor", "both"):
             corridor_out = output_dir or Path(sedona_cfg.corridor_output_dir)
+            sample_cog_paths = collect_required_cog_paths(
+                cog_dir, scene_ids[0], pipeline.features.required_bands
+            )
+            scene_bbox = get_scene_wgs84_bbox(sample_cog_paths["B4"])
+            clip_bbox = (
+                max(bbox[0], scene_bbox[0]),
+                max(bbox[1], scene_bbox[1]),
+                min(bbox[2], scene_bbox[2]),
+                min(bbox[3], scene_bbox[3]),
+            )
             regions_df = load_corridor_regions(
                 spark,
                 cached_lines,
                 buffer_m=corridors.buffer_m,
                 metric_crs=corridors.metric_crs,
+                clip_bbox_wgs84=clip_bbox,
             )
             run_zonal_stats_job(
                 spark,
@@ -271,6 +303,7 @@ def main(
                 spark,
                 hex_path,
                 h3_resolution=pipeline.features.h3_resolution,
+                metric_crs=corridors.metric_crs,
             )
             run_zonal_stats_job(
                 spark,

@@ -9,12 +9,13 @@ import rioxarray  # noqa: F401
 import xarray as xr
 from pyproj import Transformer
 from rasterio.transform import from_origin
-from shapely.geometry import LineString, mapping
+from shapely.geometry import LineString, box, mapping
 
 from wildfire_geo_ml.features.indices import write_scene_index_cogs
 from wildfire_geo_ml.sedona.session import create_sedona_session
 from wildfire_geo_ml.sedona.zonal_stats_job import (
     load_corridor_regions,
+    load_hex_regions,
     run_zonal_stats_job,
     stop_spark,
 )
@@ -39,6 +40,21 @@ def _write_corridor_geojson(path: Path) -> None:
         "type": "Feature",
         "geometry": mapping(LineString(coords)),
         "properties": {"OBJECTID": 1, "TLine Name": "TEST_LINE"},
+    }
+    payload = {"type": "FeatureCollection", "features": [feature]}
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(payload), encoding="utf-8")
+
+
+def _write_hex_geojson(path: Path) -> None:
+    """Write one H3-like hex polygon overlapping the synthetic raster extent."""
+    transformer = Transformer.from_crs("EPSG:32610", "EPSG:4326", always_xy=True)
+    hex_utm = box(599800.0, 4499800.0, 600200.0, 4500200.0)
+    coords = [transformer.transform(x, y) for x, y in hex_utm.exterior.coords]
+    feature = {
+        "type": "Feature",
+        "geometry": mapping(type(hex_utm)(coords)),
+        "properties": {"h3_index": "882684bb41fffff"},
     }
     payload = {"type": "FeatureCollection", "features": [feature]}
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -77,5 +93,42 @@ def test_corridor_zonal_stats_local_spark(tmp_path: Path, java17_home: str) -> N
             sample = result.select("ndvi_mean").collect()[0][0]
             assert sample is not None
             assert -1.0 <= float(sample) <= 1.0
+    finally:
+        stop_spark(spark)
+
+
+@pytest.mark.slow
+def test_hex_zonal_stats_local_spark(tmp_path: Path, java17_home: str) -> None:
+    scene_id = "LC09_TEST_SCENE"
+    indices_dir = tmp_path / "indices"
+    _make_uniform_index_cog(indices_dir, scene_id)
+
+    hex_path = tmp_path / "hexes.geojson"
+    _write_hex_geojson(hex_path)
+    output_dir = tmp_path / "hex_stats"
+
+    spark = create_sedona_session(app_name="wildfire-hex-zonal-test")
+    try:
+        regions_df = load_hex_regions(
+            spark,
+            hex_path,
+            h3_resolution=8,
+            metric_crs="EPSG:32610",
+        )
+        run_zonal_stats_job(
+            spark,
+            indices_dir=indices_dir,
+            regions_df=regions_df,
+            region_kind="hex",
+            output_dir=output_dir,
+            stat_names=["mean", "std"],
+            h3_resolution=8,
+        )
+        result = spark.read.format("geoparquet").load(str(output_dir))
+        assert result.count() >= 1
+        assert "h3_res8" in result.columns
+        if "ndvi_mean" in result.columns:
+            sample = result.select("ndvi_mean").collect()[0][0]
+            assert sample is not None
     finally:
         stop_spark(spark)
