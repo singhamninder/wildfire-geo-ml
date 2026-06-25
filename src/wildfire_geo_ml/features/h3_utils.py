@@ -12,6 +12,7 @@ import geopandas as gpd
 import h3
 from h3 import LatLngPoly
 from shapely.geometry import Polygon, box
+from shapely.geometry.base import BaseGeometry
 
 from wildfire_geo_ml.features.geopandas_io import gdf_from_records
 
@@ -168,4 +169,43 @@ def filter_cells_to_extent(
         poly = h3_cell_to_polygon(cell)
         if extent.intersects(poly):
             filtered.append(cell)
+    return filtered
+
+
+def filter_cells_to_geometry(
+    cells: list[str],
+    geometry: BaseGeometry,
+    geometry_crs: str,
+) -> list[str]:
+    """
+    Keep H3 cells whose hex polygons intersect a scene geometry.
+
+    Parameters
+    ----------
+    cells : list[str]
+        Candidate H3 cell IDs.
+    geometry : shapely geometry
+        Scene extent geometry in ``geometry_crs`` (e.g. valid-data footprint).
+    geometry_crs : str
+        CRS of ``geometry`` (e.g. EPSG:32610 for Landsat UTM tiles).
+
+    Returns
+    -------
+    list[str]
+        Filtered cell IDs intersecting ``geometry``.
+    """
+    if not cells:
+        return []
+    if geometry is None or geometry.is_empty:
+        return []
+
+    hex_gdf = h3_cells_to_geodataframe(cells)
+    hex_proj = hex_gdf.to_crs(geometry_crs)
+    filtered: list[str] = []
+    for i in range(len(hex_proj)):
+        cell_geom = hex_proj.iloc[i].geometry
+        if cell_geom is None or cell_geom.is_empty:
+            continue
+        if geometry.intersects(cell_geom):
+            filtered.append(str(hex_gdf.iloc[i]["h3_index"]))
     return filtered

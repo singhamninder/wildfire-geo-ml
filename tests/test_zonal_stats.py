@@ -105,3 +105,19 @@ def test_compute_scene_h3_stats_uniform_raster_exact_mean() -> None:
 def test_compute_scene_h3_stats_empty_cells() -> None:
     gdf = compute_scene_h3_stats({"ndvi": _make_index_array(np.ones((2, 2)))}, [])
     assert len(gdf) == 0
+
+
+def test_compute_scene_h3_stats_skips_cells_outside_raster() -> None:
+    """WGS84 scene bbox can include H3 cells that do not overlap the UTM raster."""
+    ndvi = _make_index_array(np.full((32, 32), 0.5))
+    west, south, east, north = ndvi.rio.bounds()
+    raster_bbox = _utm_bounds_to_wgs84_bbox(west, south, east, north)
+    # Pad the bbox north so polyfill picks up edge cells outside the raster.
+    padded_bbox = (raster_bbox[0], raster_bbox[1], raster_bbox[2], raster_bbox[3] + 0.05)
+    cells = filter_cells_to_extent(polyfill_bbox(padded_bbox, 8), padded_bbox)
+    assert len(cells) > 0
+
+    gdf = compute_scene_h3_stats({"ndvi": ndvi}, cells)
+
+    assert len(gdf) >= 1
+    assert (gdf["pixel_count"] > 0).all()

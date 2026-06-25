@@ -99,7 +99,11 @@ def _mask_valid_values(src: DatasetReader, geometry: BaseGeometry) -> np.ndarray
     if src.crs is None:
         msg = "Index raster is missing a CRS; cannot mask by geometry"
         raise ValueError(msg)
-    data, _ = mask(src, [geom_geojson], crop=True, nodata=np.nan, all_touched=True)
+    try:
+        data, _ = mask(src, [geom_geojson], crop=True, nodata=np.nan, all_touched=True)
+    except ValueError:
+        # Edge H3 cells can intersect the WGS84 scene bbox but not the UTM raster extent.
+        return np.array([], dtype=np.float64)
     vals = data[0].astype(np.float64).flatten()
     return vals[~np.isnan(vals)]
 

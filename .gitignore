@@ -8,8 +8,7 @@ htmlcov/
 .env
 .venv/
 
-data/raw/
-data/cog/
+data/*
 
 .DS_Store
 .cursor/

@@ -11,18 +11,25 @@ from pathlib import Path
 from typing import cast
 
 import geopandas as gpd
+import numpy as np
 import pandas as pd
 import rasterio
 import typer
+from affine import Affine
+from rasterio import features as rio_features
 from rasterio.warp import transform_bounds
+from shapely.geometry import shape
+from shapely.geometry.base import BaseGeometry
+from shapely.ops import unary_union
 
 from wildfire_geo_ml.features.geopandas_io import empty_gdf
 from wildfire_geo_ml.features.h3_utils import (
     coerce_bbox4,
     filter_cells_to_extent,
+    filter_cells_to_geometry,
     polyfill_bbox,
 )
-from wildfire_geo_ml.features.indices import load_scene_indices
+from wildfire_geo_ml.features.indices import LANDSAT9_FILL, load_scene_indices
 from wildfire_geo_ml.features.zonal_stats import compute_scene_h3_stats
 from wildfire_geo_ml.ingest.config import FeaturesConfig, PipelineConfig, load_pipeline_config
 from wildfire_geo_ml.ingest.landsat_paths import (
@@ -37,6 +44,67 @@ logger = logging.getLogger(__name__)
 
 DEFAULT_CONFIG = Path("config/pipeline.yaml")
 DEFAULT_COG_DIR = Path("data/cog")
+FOOTPRINT_TARGET_RES_M = 120.0
+
+
+def get_scene_valid_footprint(
+    cog_path: Path,
+) -> tuple[BaseGeometry, str] | None:
+    """
+    Derive a valid-data footprint polygon from a Landsat SR band COG.
+
+    Reads a decimated band, vectorizes pixels where DN is not fill (``0``),
+    and returns a simplified/buffered polygon in the raster CRS.
+
+    Parameters
+    ----------
+    cog_path : Path
+        Path to a single-band Landsat SR COG (typically B4).
+
+    Returns
+    -------
+    tuple[BaseGeometry, str] or None
+        Footprint geometry and its CRS string, or ``None`` when no valid pixels.
+    """
+    with rasterio.open(cog_path) as src:
+        if src.crs is None:
+            msg = f"COG missing CRS: {cog_path}"
+            raise ValueError(msg)
+
+        pixel_size = max(abs(src.transform.a), abs(src.transform.e))
+        decimation = max(1, round(FOOTPRINT_TARGET_RES_M / pixel_size))
+        out_height = max(1, src.height // decimation)
+        out_width = max(1, src.width // decimation)
+        data = src.read(1, out_shape=(out_height, out_width))
+        scaled_transform = src.transform * Affine.scale(
+            src.width / out_width,
+            src.height / out_height,
+        )
+        crs = src.crs.to_string()
+
+    valid = data != LANDSAT9_FILL
+    if not np.any(valid):
+        return None
+
+    polygons = [
+        shape(geom)
+        for geom, value in rio_features.shapes(
+            valid.astype(np.uint8),
+            mask=valid,
+            transform=scaled_transform,
+        )
+        if value == 1
+    ]
+    if not polygons:
+        return None
+
+    footprint = unary_union(polygons)
+    coarse_pixel = max(abs(scaled_transform.a), abs(scaled_transform.e))
+    footprint = footprint.simplify(coarse_pixel, preserve_topology=True)
+    footprint = footprint.buffer(coarse_pixel)
+    if footprint.is_empty:
+        return None
+    return footprint, crs
 
 
 def get_scene_wgs84_bbox(cog_path: Path) -> tuple[float, float, float, float]:
@@ -166,7 +234,23 @@ def process_scene(
 
     study_cells = polyfill_bbox(coerce_bbox4(study_bbox), features_config.h3_resolution)
     scene_bbox = get_scene_wgs84_bbox(cog_paths["B4"])
-    scene_cells = filter_cells_to_extent(study_cells, scene_bbox)
+    bbox_cells = filter_cells_to_extent(study_cells, scene_bbox)
+    footprint_result = get_scene_valid_footprint(cog_paths["B4"])
+    if footprint_result is not None:
+        footprint_geom, footprint_crs = footprint_result
+        scene_cells = filter_cells_to_geometry(study_cells, footprint_geom, footprint_crs)
+        logger.info(
+            "Scene %s: %d H3 cells after footprint filter (%d after WGS84 bbox)",
+            scene_id,
+            len(scene_cells),
+            len(bbox_cells),
+        )
+    else:
+        logger.warning(
+            "Scene %s: no valid-data footprint; falling back to WGS84 bbox filter",
+            scene_id,
+        )
+        scene_cells = bbox_cells
 
     gdf = compute_scene_h3_stats(
         index_arrays,

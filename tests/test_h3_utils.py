@@ -1,9 +1,11 @@
 """Tests for H3 polyfill and geometry helpers."""
 
 import h3
+from shapely.geometry import box
 
 from wildfire_geo_ml.features.h3_utils import (
     filter_cells_to_extent,
+    filter_cells_to_geometry,
     h3_cells_to_geodataframe,
     polyfill_bbox,
 )
@@ -42,3 +44,20 @@ def test_filter_cells_to_extent_reduces_count() -> None:
     filtered = filter_cells_to_extent(study_cells, scene_bbox)
     assert 0 < len(filtered) < len(study_cells)
     assert set(filtered).issubset(set(study_cells))
+
+
+def test_filter_cells_to_geometry_keeps_intersecting_cells() -> None:
+    study_cells = polyfill_bbox(CHICO_BBOX, resolution=8)
+    # Small WGS84 box, then use its UTM envelope as the filter geometry.
+    scene_bbox = (-121.75, 39.65, -121.65, 39.75)
+    bbox_cells = filter_cells_to_extent(study_cells, scene_bbox)
+    hex_gdf = h3_cells_to_geodataframe(bbox_cells)
+    utm_geom = box(*hex_gdf.to_crs("EPSG:32610").total_bounds)
+
+    filtered = filter_cells_to_geometry(bbox_cells, utm_geom, "EPSG:32610")
+    assert len(filtered) == len(bbox_cells)
+    assert set(filtered).issubset(set(study_cells))
+
+    outside = filter_cells_to_geometry(study_cells, utm_geom, "EPSG:32610")
+    assert 0 < len(outside) < len(study_cells)
+    assert set(outside).issubset(set(study_cells))
