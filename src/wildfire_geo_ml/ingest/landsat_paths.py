@@ -44,11 +44,13 @@ def parse_scene_id(scene_id: str) -> SceneMeta:
         )
         raise ValueError(msg)
 
+    # WRS path/row token is a 6-digit PPPRRR string in the scene ID.
     wrs_token = parts[2]
     if len(wrs_token) != 6 or not wrs_token.isdigit():
         msg = f"Invalid WRS token {wrs_token!r} in scene ID {scene_id!r}"
         raise ValueError(msg)
 
+    # Acquisition date is the first YYYYMMDD token after the WRS token.
     acquisition_date = parts[3]
     if len(acquisition_date) != 8 or not acquisition_date.isdigit():
         msg = f"Invalid acquisition date {acquisition_date!r} in scene ID {scene_id!r}"
@@ -163,7 +165,21 @@ def mtl_key(
 
 
 def local_scene_dir(output_dir: Path, scene_id: str) -> Path:
-    """Return the per-scene directory under the download root."""
+    """
+    Return the per-scene directory under the download root.
+
+    Parameters
+    ----------
+    output_dir : Path
+        Root download directory (e.g. ``data/raw``).
+    scene_id : str
+        Landsat scene ID.
+
+    Returns
+    -------
+    Path
+        ``output_dir / scene_id``.
+    """
     return output_dir / scene_id
 
 
@@ -172,6 +188,20 @@ def local_band_path(output_dir: Path, scene_id: str, band: str) -> Path:
     Return the local path for a surface-reflectance band file.
 
     Preserves the USGS filename under ``output_dir/{scene_id}/``.
+
+    Parameters
+    ----------
+    output_dir : Path
+        Root download directory.
+    scene_id : str
+        Landsat scene ID.
+    band : str
+        Band name, e.g. ``B4``.
+
+    Returns
+    -------
+    Path
+        Local path to the SR band GeoTIFF.
     """
     band_upper = band.upper().removeprefix("B")
     band_label = f"B{band_upper}"
@@ -180,7 +210,21 @@ def local_band_path(output_dir: Path, scene_id: str, band: str) -> Path:
 
 
 def local_mtl_path(output_dir: Path, scene_id: str) -> Path:
-    """Return the local path for the scene MTL JSON file."""
+    """
+    Return the local path for the scene MTL JSON file.
+
+    Parameters
+    ----------
+    output_dir : Path
+        Root download directory.
+    scene_id : str
+        Landsat scene ID.
+
+    Returns
+    -------
+    Path
+        Local path to ``{scene_id}_MTL.json``.
+    """
     return local_scene_dir(output_dir, scene_id) / f"{scene_id}_MTL.json"
 
 
@@ -203,6 +247,7 @@ def discover_scenes_on_disk(input_dir: Path) -> list[str]:
 
     scenes: list[str] = []
     for child in sorted(input_dir.iterdir()):
+        # Scene dirs contain at least one SR band GeoTIFF matching USGS naming.
         if child.is_dir() and any(child.glob("*_SR_B*.TIF")):
             scenes.append(child.name)
     return scenes
@@ -236,6 +281,7 @@ def filter_scenes(
     filtered: list[str] = []
     for scene_id in scenes:
         meta = parse_scene_id(scene_id)
+        # All supplied filters must pass (AND semantics).
         if wrs_path is not None and meta.wrs_path != wrs_path:
             continue
         if rows is not None and meta.wrs_row not in rows:

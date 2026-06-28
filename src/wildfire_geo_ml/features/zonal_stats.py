@@ -45,6 +45,7 @@ def _write_array_to_memory(da: xr.DataArray) -> MemoryFile:
         Open memory file positioned at the start of the raster.
     """
     memfile = MemoryFile()
+    # Bridge xarray arrays to rasterio mask() via an in-memory GeoTIFF.
     da.rio.to_raster(memfile.name)
     return memfile
 
@@ -175,10 +176,12 @@ def compute_scene_h3_stats(
         raise ValueError(msg)
 
     hex_gdf = h3_cells_to_geodataframe(h3_cells)
+    # Project hexes to the index raster CRS for accurate pixel masking.
     hex_proj = hex_gdf.to_crs(reference.rio.crs)
 
     records: list[dict[str, Any]] = []
     with ExitStack() as stack:
+        # ExitStack keeps in-memory GeoTIFF readers open for the full scene loop.
         index_readers = _open_index_rasters(index_arrays, stack)
         for i in range(len(hex_proj)):
             row = hex_proj.iloc[i]
@@ -189,6 +192,7 @@ def compute_scene_h3_stats(
             record: dict[str, Any] = {
                 "h3_index": row["h3_index"],
                 "h3_res8": row["h3_index"],
+                # Store WGS84 geometry for output; masking uses projected CRS above.
                 "geometry": hex_gdf.iloc[i].geometry,
             }
 
@@ -203,6 +207,7 @@ def compute_scene_h3_stats(
                     column = f"{index_name}_{stat_name}"
                     record[column] = stats.get(stat_name)
 
+            # Drop cells with no valid pixels across any index.
             if pixel_count is None or pixel_count == 0:
                 continue
 

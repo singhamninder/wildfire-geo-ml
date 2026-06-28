@@ -42,7 +42,22 @@ class S3DownloadClient(Protocol):
         key: str,
         filename: str,
         ExtraArgs: dict[str, str] | None = None,  # noqa: N803 — boto3 API name
-    ) -> None: ...
+    ) -> None:
+        """
+        Download an S3 object to a local file path.
+
+        Parameters
+        ----------
+        bucket : str
+            S3 bucket name.
+        key : str
+            Object key.
+        filename : str
+            Local destination path.
+        ExtraArgs : dict[str, str], optional
+            Extra arguments (e.g. ``RequestPayer`` for Requester Pays buckets).
+        """
+        ...
 
 
 DEFAULT_CONFIG = Path("config/pipeline.yaml")
@@ -72,14 +87,17 @@ class DownloadReport:
 
     @property
     def failed(self) -> list[FileResult]:
+        """File results with status ``failed``."""
         return [r for r in self.results if r.status == "failed"]
 
     @property
     def downloaded(self) -> list[FileResult]:
+        """File results with status ``downloaded``."""
         return [r for r in self.results if r.status == "downloaded"]
 
     @property
     def skipped(self) -> list[FileResult]:
+        """File results with status ``skipped`` (already present locally)."""
         return [r for r in self.results if r.status == "skipped"]
 
 
@@ -143,10 +161,12 @@ def download_file(
         ``downloaded``, ``skipped``, or ``failed``.
     """
     if dest.exists() and dest.stat().st_size > 0 and not force:
+        # Skip re-download when a non-empty local copy already exists.
         return "skipped"
 
     dest.parent.mkdir(parents=True, exist_ok=True)
     try:
+        # Requester Pays is required for the usgs-landsat open-data bucket.
         s3.download_file(
             bucket,
             key,
@@ -172,8 +192,8 @@ def download_scene(
 
     Parameters
     ----------
-    s3 : S3Client
-        Boto3 S3 client.
+    s3 : S3DownloadClient
+        Boto3 S3 client configured for Requester Pays downloads.
     config : IngestConfig
         Ingest settings (bucket, collection prefix, default bands).
     scene_id : str
@@ -193,6 +213,7 @@ def download_scene(
     band_list = bands if bands is not None else config.bands
     report = DownloadReport(scene_id=scene_id)
 
+    # Download each SR band GeoTIFF, then the MTL JSON metadata sidecar.
     for band in band_list:
         key = sr_band_key(scene_id, band, config.collection_prefix)
         dest = local_band_path(output_dir, scene_id, band)
@@ -244,6 +265,7 @@ def run_download(
     s3 = get_landsat_s3_client()
     reports: list[DownloadReport] = []
 
+    # Download scenes sequentially with per-file progress logging.
     for scene_id in tqdm(scene_ids, desc="Scenes", unit="scene"):
         logger.info("Downloading scene %s", scene_id)
         report = download_scene(s3, config, scene_id, output_dir, bands=bands, force=force)
@@ -337,10 +359,16 @@ def main(
     ``--path``/``--rows``/``--dates`` to narrow the download set.
 
     Requires AWS credentials (Requester Pays bucket); set AWS_PROFILE in .env or shell.
+
+    Notes
+    -----
+    Exits with code 1 when STAC discovery fails, no scenes match filters,
+    or any individual file download fails.
     """
     load_dotenv()
     logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 
+    # Load config and resolve CLI filter overrides.
     pipeline = load_pipeline_config(config_path)
     ingest = pipeline.ingest
 

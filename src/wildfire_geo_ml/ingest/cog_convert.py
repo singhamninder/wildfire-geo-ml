@@ -32,6 +32,7 @@ COG_PROFILE = "deflate"
 OVERVIEW_LEVELS = 6
 OVERVIEW_RESAMPLING = "average"
 
+# rio-cogeo validate stdout markers for quick pass/fail parsing.
 VALID_COG_MARKER = "is a valid cloud optimized GeoTIFF"
 INVALID_COG_MARKER = "is NOT"
 
@@ -56,6 +57,7 @@ class CogSceneReport:
 
     @property
     def failed(self) -> list[CogFileResult]:
+        """Band results with status ``failed``."""
         return [r for r in self.results if r.status == "failed"]
 
 
@@ -83,6 +85,7 @@ def is_valid_cog(path: Path) -> bool:
         check=False,
     )
     output = (result.stdout or "") + (result.stderr or "")
+    # Parse rio-cogeo validate text output rather than relying on exit code alone.
     if INVALID_COG_MARKER in output:
         return False
     return VALID_COG_MARKER in output or result.returncode == 0
@@ -186,6 +189,7 @@ def ensure_cog(input_path: Path, output_path: Path, *, force: bool = False) -> s
         return "failed"
 
     try:
+        # Validate-first: skip when output already valid; copy when input is valid COG.
         if output_path.is_file() and is_valid_cog(output_path) and not force:
             return "skipped"
 
@@ -194,6 +198,7 @@ def ensure_cog(input_path: Path, output_path: Path, *, force: bool = False) -> s
             shutil.copy2(input_path, output_path)
             return "validated"
 
+        # Re-profile non-conforming rasters with rio-cogeo deflate + overviews.
         convert_to_cog(input_path, output_path)
     except (OSError, subprocess.CalledProcessError, ValueError) as exc:
         logger.error("COG ensure failed %s -> %s: %s", input_path, output_path, exc)
@@ -264,6 +269,7 @@ def process_scene(
         Per-band COG outcomes.
     """
     report = CogSceneReport(scene_id=scene_id)
+    # Validate-first COG ensure for each SR band in the scene.
     for band in bands:
         input_path = local_band_path(input_dir, scene_id, band)
         output_path = local_band_path(output_dir, scene_id, band)
@@ -384,6 +390,10 @@ def main(
     artifacts only). USGS Collection 2 bands are usually already COG — this step
     validates each band and copies it to ``data/cog/``. Non-conforming rasters
     are re-profiled with rio-cogeo (deflate, 6 overview levels).
+
+    Notes
+    -----
+    Exits with code 1 when no scenes match filters or any band COG ensure fails.
     """
     logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 
@@ -394,6 +404,7 @@ def main(
     row_filter = list(rows) if rows else None
     date_filter = list(dates) if dates else None
 
+    # Resolve scenes from on-disk raw downloads matching WRS/date filters.
     scene_ids = resolve_input_scenes(
         input_dir,
         wrs_path=path_filter,

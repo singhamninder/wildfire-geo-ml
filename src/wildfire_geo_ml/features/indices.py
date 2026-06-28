@@ -160,7 +160,9 @@ def compute_all_indices(
     }
 
 
+# Sentinel nodata for index GeoTIFFs (outside valid [-1, 1] index range).
 INDEX_NODATA = -9999.0
+# rio-cogeo requires at least 512 px per dimension for COG tiling.
 MIN_COG_DIMENSION = 512
 
 
@@ -191,6 +193,7 @@ def clip_array_to_wgs84_bbox(
         {"geometry": [box(west, south, east, north)]},
         crs="EPSG:4326",
     )
+    # Reproject WGS84 bbox to the raster CRS before clip_box.
     bbox_proj = bbox_gdf.to_crs(data_array.rio.crs)
     minx, miny, maxx, maxy = bbox_proj.total_bounds
     return data_array.rio.clip_box(minx=minx, miny=miny, maxx=maxx, maxy=maxy)
@@ -233,10 +236,12 @@ def write_scene_index_cogs(
         values.rio.to_raster(tmp_path, dtype="float32")
         height = int(values.sizes.get("y", values.shape[-2]))
         width = int(values.sizes.get("x", values.shape[-1]))
+        # Only run COG conversion when the array meets minimum tiling dimensions.
         if height >= MIN_COG_DIMENSION and width >= MIN_COG_DIMENSION:
             convert_to_cog(tmp_path, out_path)
             tmp_path.unlink(missing_ok=True)
         else:
+            # Small clipped arrays stay as plain GeoTIFFs (COG overhead not worth it).
             tmp_path.replace(out_path)
         written[index_name] = out_path
     return written

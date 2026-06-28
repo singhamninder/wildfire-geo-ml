@@ -59,6 +59,7 @@ def _bbox_to_latlng_ring(bbox: tuple[float, float, float, float]) -> list[tuple[
         Closed ring of (lat, lng) vertices.
     """
     west, south, east, north = bbox
+    # H3 LatLngPoly expects (lat, lng) vertex order, not GeoJSON (lng, lat).
     return [
         (south, west),
         (south, east),
@@ -89,6 +90,7 @@ def polyfill_bbox(
     """
     bbox_tuple = coerce_bbox4(bbox)
     ring = _bbox_to_latlng_ring(bbox_tuple)
+    # Polyfill the bbox into H3 cells at the configured resolution.
     cells = h3.polygon_to_cells(LatLngPoly(ring), resolution)
     return sorted(cells)
 
@@ -108,6 +110,7 @@ def h3_cell_to_polygon(cell: str) -> Polygon:
         Hexagon boundary as a GeoJSON-style polygon (x=lng, y=lat).
     """
     boundary = h3.cell_to_boundary(cell)
+    # Swap H3 (lat, lng) boundary to Shapely/GeoJSON (lng, lat) x/y order.
     coords = [(lng, lat) for lat, lng in boundary]
     return Polygon(coords)
 
@@ -148,7 +151,7 @@ def filter_cells_to_extent(
     scene_bbox: tuple[float, float, float, float] | list[float],
 ) -> list[str]:
     """
-    Keep H3 cells whose centroids fall within a scene bounding box.
+    Keep H3 cells whose hex polygons intersect a scene bounding box.
 
     Parameters
     ----------
@@ -167,6 +170,7 @@ def filter_cells_to_extent(
     filtered: list[str] = []
     for cell in cells:
         poly = h3_cell_to_polygon(cell)
+        # Keep cells whose hex polygon overlaps the scene bbox (not centroid-only).
         if extent.intersects(poly):
             filtered.append(cell)
     return filtered
@@ -200,6 +204,7 @@ def filter_cells_to_geometry(
         return []
 
     hex_gdf = h3_cells_to_geodataframe(cells)
+    # Reproject hexes to the scene CRS so intersection is metrically correct.
     hex_proj = hex_gdf.to_crs(geometry_crs)
     filtered: list[str] = []
     for i in range(len(hex_proj)):

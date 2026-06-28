@@ -36,14 +36,17 @@ class DiscoveredScene:
 
     @property
     def wrs_path(self) -> str:
+        """WRS-2 path parsed from the scene ID (e.g. ``044``)."""
         return parse_scene_id(self.scene_id).wrs_path
 
     @property
     def wrs_row(self) -> str:
+        """WRS-2 row parsed from the scene ID (e.g. ``032``)."""
         return parse_scene_id(self.scene_id).wrs_row
 
     @property
     def acquisition_date(self) -> str:
+        """Acquisition date as YYYYMMDD parsed from the scene ID."""
         return parse_scene_id(self.scene_id).acquisition_date
 
 
@@ -99,6 +102,7 @@ def discover_scenes(
         msg = f"max_cloud_cover must be between 0 and 100, got {threshold}"
         raise ValueError(msg)
 
+    # Query LandsatLook STAC with bbox, datetime, cloud, and platform filters.
     client = Client.open(discover.stac_api_url)
     search = client.search(
         collections=[discover.collection],
@@ -110,6 +114,7 @@ def discover_scenes(
         },
     )
 
+    # Deduplicate by scene ID; keep the lowest cloud-cover item per ID.
     by_id: dict[str, DiscoveredScene] = {}
     for item in search.items():
         scene_id = normalize_scene_id(item.id)
@@ -173,12 +178,14 @@ def resolve_scene_list(
         pipeline.discover,
         max_cloud_cover=max_cloud_cover,
     )
+    # Apply optional WRS path/row/date filters after STAC discovery.
     scene_ids = filter_scenes(
         [scene.scene_id for scene in discovered],
         wrs_path=path_filter,
         rows=rows,
         dates=dates,
     )
+    # Rejoin cloud-cover metadata for the filtered scene IDs.
     cloud_by_id = {scene.scene_id: scene.cloud_cover for scene in discovered}
     return [
         DiscoveredScene(scene_id=sid, cloud_cover=cloud_by_id[sid])

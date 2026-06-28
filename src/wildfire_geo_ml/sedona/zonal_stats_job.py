@@ -67,6 +67,7 @@ def load_index_rasters(
     """
     paths_df = spark.createDataFrame(index_rows, ["scene_id", "index_name", "cog_path"])
     cog_paths = [row[2] for row in index_rows]
+    # Read GeoTIFF bytes via Spark binaryFile; strip file: prefix for join key match.
     binary_df = spark.read.format("binaryFile").load(cog_paths)
     binary_df = binary_df.withColumn(
         "cog_path",
@@ -149,14 +150,17 @@ def load_corridor_regions(
 
     lines_df = _with_wgs84_srid(_load_geojson_features(spark, geojson_path))
     prop_fields = _geojson_property_fields(lines_df)
+    # Prefer stable CEC OBJECTID; fall back to monotonic ID when absent.
     if "OBJECTID" in prop_fields:
         lines_df = lines_df.withColumn("region_id", F.col("properties.OBJECTID").cast("string"))
     else:
         lines_df = lines_df.withColumn("region_id", F.monotonically_increasing_id().cast("string"))
 
     if clip_bbox_wgs84 is not None:
+        # Clip lines to study∩scene bbox before buffering to reduce join cost.
         lines_df = filter_regions_to_wgs84_bbox(lines_df, clip_bbox_wgs84)
 
+    # Buffer in metric CRS: WGS84 -> metric -> ST_Buffer -> metric (keep UTM alignment).
     buffer_expr = (
         f"ST_Transform("
         f"ST_Buffer(ST_Transform(geometry, '{metric_crs}'), {buffer_m}), "
@@ -209,6 +213,7 @@ def load_hex_regions(
         id_expr = F.monotonically_increasing_id().cast("string")
     partition_col = f"h3_res{h3_resolution}"
     if metric_crs is not None:
+        # Reproject hexes to UTM so they align with index COG rasters.
         hex_df = hex_df.withColumn("geometry", F.expr(f"ST_Transform(geometry, '{metric_crs}')"))
     return (
         hex_df.withColumn("region_id", id_expr)
@@ -238,6 +243,7 @@ def filter_regions_to_wgs84_bbox(
         Filtered regions.
     """
     west, south, east, north = bbox_wgs84
+    # Build WKT bbox polygon inline for ST_Intersects spatial filter.
     bbox_wkt = (
         f"POLYGON(({west} {south}, {east} {south}, {east} {north}, {west} {north}, {west} {south}))"
     )
@@ -279,6 +285,7 @@ def compute_region_zonal_stats(
     joined = rasters_df.crossJoin(F.broadcast(regions_df)).filter(
         F.expr("ST_Intersects(RS_Envelope(raster), geometry)")
     )
+    # RS_ZonalStatsAll args: band=1, allTouched=true, noData=true.
     stats_df = joined.withColumn(
         "stats",
         F.expr("RS_ZonalStatsAll(raster, geometry, 1, true, true)"),
@@ -298,6 +305,7 @@ def compute_region_zonal_stats(
         select_exprs.append(f"stats.{sedona_field} as {stat_name}")
 
     if "max" not in stat_names:
+        # Always retain max for downstream burn-severity thresholding.
         select_exprs.append("stats.max as max")
 
     return stats_df.selectExpr(*select_exprs)
@@ -325,6 +333,7 @@ def pivot_index_stats(long_df: DataFrame, stat_names: list[str]) -> DataFrame:
         group_cols.append(partition_col)
 
     agg_exprs = []
+    # Pivot the three spectral indices computed in Phase 2 feature engineering.
     for index_name in ("ndvi", "nbr", "ndwi"):
         for stat_name in stat_names:
             if stat_name in long_df.columns:
@@ -420,6 +429,7 @@ def run_zonal_stats_job(
             long_df = long_df.unionByName(part)
         wide_df = pivot_index_stats(long_df, stat_names).join(geom_df, on="region_id", how="left")
 
+        # Overwrite on first scene; append subsequent scenes; partition hex output by h3_res8.
         write_mode = "overwrite" if scene_index == 0 else "append"
         writer = wide_df.write.mode(write_mode).format("geoparquet")
         if region_kind == "hex" and partition_col is not None:

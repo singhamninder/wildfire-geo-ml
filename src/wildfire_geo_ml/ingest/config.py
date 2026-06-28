@@ -19,6 +19,24 @@ class StudyAreaConfig(BaseModel):
     @field_validator("bbox")
     @classmethod
     def validate_bbox(cls, value: list[float]) -> list[float]:
+        """
+        Ensure bbox has exactly four WGS84 coordinates.
+
+        Parameters
+        ----------
+        value : list[float]
+            Bounding box as [west, south, east, north].
+
+        Returns
+        -------
+        list[float]
+            Validated bbox unchanged.
+
+        Raises
+        ------
+        ValueError
+            If the list length is not four.
+        """
         if len(value) != 4:
             msg = f"bbox must have exactly 4 values [west, south, east, north], got {len(value)}"
             raise ValueError(msg)
@@ -39,6 +57,24 @@ class DiscoverConfig(BaseModel):
     @field_validator("max_cloud_cover")
     @classmethod
     def validate_cloud_cover(cls, value: float) -> float:
+        """
+        Ensure cloud cover threshold is a valid percentage.
+
+        Parameters
+        ----------
+        value : float
+            Maximum eo:cloud_cover percent for STAC discovery.
+
+        Returns
+        -------
+        float
+            Validated threshold unchanged.
+
+        Raises
+        ------
+        ValueError
+            If value is outside [0, 100].
+        """
         if not 0 <= value <= 100:
             msg = f"max_cloud_cover must be between 0 and 100, got {value}"
             raise ValueError(msg)
@@ -81,6 +117,24 @@ class FeaturesConfig(BaseModel):
     @field_validator("h3_resolution")
     @classmethod
     def validate_h3_resolution(cls, value: int) -> int:
+        """
+        Ensure H3 resolution is within the valid index range.
+
+        Parameters
+        ----------
+        value : int
+            H3 resolution level (0–15).
+
+        Returns
+        -------
+        int
+            Validated resolution unchanged.
+
+        Raises
+        ------
+        ValueError
+            If value is outside [0, 15].
+        """
         if not 0 <= value <= 15:
             msg = f"h3_resolution must be between 0 and 15, got {value}"
             raise ValueError(msg)
@@ -164,6 +218,7 @@ def load_pipeline_config(config_path: Path) -> PipelineConfig:
         msg = f"Config file not found: {config_path}"
         raise FileNotFoundError(msg)
 
+    # Parse YAML and validate required top-level sections before Pydantic coercion.
     with config_path.open(encoding="utf-8") as f:
         raw = yaml.safe_load(f)
 

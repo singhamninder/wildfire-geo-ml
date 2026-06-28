@@ -84,6 +84,7 @@ def prepare_index_cogs(
         logger.info("Writing index COGs for scene %s", scene_id)
         cog_paths = collect_required_cog_paths(cog_dir, scene_id, features.required_bands)
         index_arrays = load_scene_indices(cog_paths)
+        # Clip indices to study bbox so Sedona reads only the AOI subset.
         clipped = {
             name: clip_array_to_wgs84_bbox(array, study_bbox)
             for name, array in index_arrays.items()
@@ -122,9 +123,11 @@ def export_hex_regions_geojson(
     study_bbox = coerce_bbox4(pipeline.study_area.bbox)
     study_cells = polyfill_bbox(study_bbox, features.h3_resolution)
     scene_bbox = get_scene_wgs84_bbox(cog_paths["B4"])
+    # Keep only hex cells that overlap the scene extent (study ∩ scene).
     scene_cells = filter_cells_to_extent(study_cells, scene_bbox)
     hex_gdf = h3_cells_to_geodataframe(scene_cells)
     output_path.parent.mkdir(parents=True, exist_ok=True)
+    # Drop empty geometries so Sedona GeoJSON reader gets valid features only.
     features = [
         {
             "type": "Feature",
@@ -223,6 +226,11 @@ def main(
 
     Writes per-scene index COGs locally, then executes distributed zonal stats in
     Sedona on ``local[*]`` (or ``SPARK_MASTER`` for EMR Serverless).
+
+    Notes
+    -----
+    Exits with code 1 when no COG scenes match the configured filters.
+    Spark session is stopped in a ``finally`` block regardless of job outcome.
     """
     logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
     pipeline = load_pipeline_config(config_path)
@@ -270,6 +278,7 @@ def main(
                 cog_dir, scene_ids[0], pipeline.features.required_bands
             )
             scene_bbox = get_scene_wgs84_bbox(sample_cog_paths["B4"])
+            # Intersect study and scene bboxes to clip corridor lines before buffering.
             clip_bbox = (
                 max(bbox[0], scene_bbox[0]),
                 max(bbox[1], scene_bbox[1]),
@@ -297,6 +306,7 @@ def main(
             hex_out = output_dir or Path(sedona_cfg.hex_output_dir)
             hex_path = hex_regions
             if hex_path is None:
+                # Auto-export study∩scene hex GeoJSON when not supplied via --hex-regions.
                 hex_path = indices_out / "hex_regions.geojson"
                 export_hex_regions_geojson(scene_ids[0], cog_dir, pipeline, hex_path)
             regions_df = load_hex_regions(
@@ -316,6 +326,7 @@ def main(
             )
             typer.echo(f"Hex Sedona zonal stats written to {hex_out}")
     finally:
+        # Always release Spark resources even when zonal stats fail mid-run.
         stop_spark(spark)
 
 

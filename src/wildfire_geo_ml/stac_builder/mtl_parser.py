@@ -52,6 +52,7 @@ def _parse_scene_center_datetime(
         return None
 
     time_part = scene_center_time.strip()
+    # MTL times use trailing Z and fractional seconds; normalize to strptime format.
     if time_part.endswith("Z"):
         time_part = time_part[:-1]
     if "." in time_part:
@@ -85,6 +86,7 @@ def _build_proj_transform(projection: dict[str, object]) -> list[float] | None:
     uly = _as_float(projection.get("CORNER_UL_PROJECTION_Y_PRODUCT"))
     if cell_size is None or ulx is None or uly is None:
         return None
+    # Negative y-scale because GDAL affine y-origin is the upper-left corner.
     return [cell_size, 0.0, ulx, 0.0, -cell_size, uly]
 
 
@@ -109,6 +111,7 @@ def parse_mtl_dict(mtl: dict[str, object]) -> dict[str, object]:
         msg = "MTL JSON must contain a mapping at LANDSAT_METADATA_FILE"
         raise ValueError(msg)
     root: dict[str, object] = cast(dict[str, object], root_obj)
+    # Unwrap nested MTL sections for IMAGE and PROJECTION attributes.
     image_attrs_obj = root.get("IMAGE_ATTRIBUTES")
     projection_attrs_obj = root.get("PROJECTION_ATTRIBUTES")
     image_attrs: dict[str, object] = (
@@ -121,6 +124,7 @@ def parse_mtl_dict(mtl: dict[str, object]) -> dict[str, object]:
     )
 
     cloud_land = image_attrs.get("CLOUD_COVER_LAND")
+    # Prefer land-specific cloud cover; fall back to scene-wide CLOUD_COVER.
     cloud_cover_raw = cloud_land if cloud_land is not None else image_attrs.get("CLOUD_COVER")
     cloud_cover = _as_float(cloud_cover_raw)
     sun_elevation = _as_float(image_attrs.get("SUN_ELEVATION_LAND"))
@@ -131,9 +135,11 @@ def parse_mtl_dict(mtl: dict[str, object]) -> dict[str, object]:
     proj_shape = [lines, samples] if lines is not None and samples is not None else None
 
     utm_zone = _as_int(projection_attrs.get("UTM_ZONE"))
+    # Derive EPSG:326xx from UTM zone; default to 32610 (Northern CA) when absent.
     proj_epsg = 32600 + utm_zone if utm_zone is not None else 32610
 
     metadata: dict[str, object] = {
+        # Default missing sun/cloud fields to 0.0 so STAC Item properties are always numeric.
         "eo:cloud_cover": cloud_cover if cloud_cover is not None else 0.0,
         "view:sun_elevation": sun_elevation if sun_elevation is not None else 0.0,
         "view:sun_azimuth": sun_azimuth if sun_azimuth is not None else 0.0,

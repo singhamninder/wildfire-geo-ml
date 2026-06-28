@@ -44,6 +44,7 @@ logger = logging.getLogger(__name__)
 
 DEFAULT_CONFIG = Path("config/pipeline.yaml")
 DEFAULT_COG_DIR = Path("data/cog")
+# Decimate footprint raster to ~120 m before vectorizing (balance speed vs fidelity).
 FOOTPRINT_TARGET_RES_M = 120.0
 
 
@@ -72,6 +73,7 @@ def get_scene_valid_footprint(
             raise ValueError(msg)
 
         pixel_size = max(abs(src.transform.a), abs(src.transform.e))
+        # Decimate full-resolution scene to reduce vectorization cost.
         decimation = max(1, round(FOOTPRINT_TARGET_RES_M / pixel_size))
         out_height = max(1, src.height // decimation)
         out_width = max(1, src.width // decimation)
@@ -82,10 +84,12 @@ def get_scene_valid_footprint(
         )
         crs = src.crs.to_string()
 
+    # Mask fill pixels (DN=0) to isolate valid surface-reflectance coverage.
     valid = data != LANDSAT9_FILL
     if not np.any(valid):
         return None
 
+    # Vectorize valid-pixel mask into polygons in the raster CRS.
     polygons = [
         shape(geom)
         for geom, value in rio_features.shapes(
@@ -100,6 +104,7 @@ def get_scene_valid_footprint(
 
     footprint = unary_union(polygons)
     coarse_pixel = max(abs(scaled_transform.a), abs(scaled_transform.e))
+    # Simplify and buffer by one coarse pixel to close small gaps in the footprint.
     footprint = footprint.simplify(coarse_pixel, preserve_topology=True)
     footprint = footprint.buffer(coarse_pixel)
     if footprint.is_empty:
@@ -232,12 +237,14 @@ def process_scene(
     cog_paths = collect_required_cog_paths(cog_dir, scene_id, features_config.required_bands)
     index_arrays = load_scene_indices(cog_paths)
 
+    # Polyfill study bbox, then narrow to scene extent via footprint or WGS84 bbox.
     study_cells = polyfill_bbox(coerce_bbox4(study_bbox), features_config.h3_resolution)
     scene_bbox = get_scene_wgs84_bbox(cog_paths["B4"])
     bbox_cells = filter_cells_to_extent(study_cells, scene_bbox)
     footprint_result = get_scene_valid_footprint(cog_paths["B4"])
     if footprint_result is not None:
         footprint_geom, footprint_crs = footprint_result
+        # Prefer valid-data footprint over axis-aligned bbox when available.
         scene_cells = filter_cells_to_geometry(study_cells, footprint_geom, footprint_crs)
         logger.info(
             "Scene %s: %d H3 cells after footprint filter (%d after WGS84 bbox)",
@@ -261,6 +268,7 @@ def process_scene(
         logger.warning("No H3 cells with valid pixels for scene %s", scene_id)
         return gdf
 
+    # Attach scene metadata columns for downstream Hive/ML joins.
     meta = parse_scene_id(scene_id)
     gdf["scene_id"] = scene_id
     gdf["acquisition_date"] = meta.acquisition_date
@@ -309,6 +317,7 @@ def write_partitioned_geoparquet(gdf: gpd.GeoDataFrame, output_dir: Path) -> Pat
         Output directory path.
     """
     if output_dir.exists():
+        # Remove prior partition tree so re-runs produce a clean snapshot.
         shutil.rmtree(output_dir)
 
     if gdf.empty:
@@ -319,6 +328,7 @@ def write_partitioned_geoparquet(gdf: gpd.GeoDataFrame, output_dir: Path) -> Pat
     for h3_res8, group in gdf.groupby("h3_res8", sort=True):
         part_dir = output_dir / f"h3_res8={h3_res8}"
         part_dir.mkdir(parents=True, exist_ok=True)
+        # Hive partition key is encoded in the directory name, not the parquet file.
         group.drop(columns=["h3_res8"]).to_parquet(part_dir / "part-0.parquet", index=False)
 
     return output_dir
@@ -375,6 +385,7 @@ def build_features(
         if not scene_gdf.empty:
             frames.append(scene_gdf)
 
+    # Concatenate per-scene frames; fall back to empty schema when all scenes are empty.
     if frames:
         combined = cast(gpd.GeoDataFrame, pd.concat(frames, ignore_index=True))
     else:
@@ -453,6 +464,10 @@ def main(
 
     Scans ``data/cog/`` for on-disk scenes, polyfills the study-area bbox at the
     configured H3 resolution, and writes Hive-partitioned GeoParquet.
+
+    Notes
+    -----
+    Exits with code 1 when no COG scenes match the configured filters.
     """
     logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 

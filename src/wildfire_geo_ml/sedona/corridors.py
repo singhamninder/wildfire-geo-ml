@@ -60,6 +60,7 @@ def build_arcgis_query_url(
     params = {
         "where": "1=1",
         "geometry": _bbox_to_arcgis_envelope(bbox),
+        # Envelope query in WGS84 with intersects spatial relation.
         "geometryType": "esriGeometryEnvelope",
         "inSR": "4326",
         "spatialRel": "esriSpatialRelIntersects",
@@ -129,11 +130,13 @@ def fetch_transmission_lines(
         If the network request fails.
     """
     if out_path.is_file() and not force_refresh:
+        # Return cached GeoJSON to avoid repeated ArcGIS REST calls during dev.
         return out_path
 
     out_path.parent.mkdir(parents=True, exist_ok=True)
     url = build_arcgis_query_url(rest_service_url, bbox)
     request = urllib.request.Request(url, headers={"User-Agent": "wildfire-geo-ml/0.1"})
+    # 60s timeout accommodates slow CEC FeatureServer responses over large AOIs.
     with urllib.request.urlopen(request, timeout=60) as response:  # noqa: S310
         status = getattr(response, "status", response.getcode())
         if status != 200:

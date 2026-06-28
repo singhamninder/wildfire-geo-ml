@@ -97,6 +97,7 @@ def _parse_scene_datetime(scene_id: str) -> datetime:
         UTC datetime of acquisition (date from scene ID; time at noon UTC).
     """
     date_str = scene_id.split("_")[3]
+    # Noon UTC fallback when MTL datetime is unavailable (date-only from scene ID).
     return datetime(
         int(date_str[:4]),
         int(date_str[4:6]),
@@ -133,6 +134,7 @@ def _get_scene_bbox_and_footprint(cog_path: Path) -> tuple[list[float], dict]:
             bounds.top,
         )
     bbox = [west, south, east, north]
+    # Axis-aligned rectangle footprint (simplified vs true valid-data polygon).
     footprint = {
         "type": "Polygon",
         "coordinates": [
@@ -242,6 +244,7 @@ def create_item_from_cog(
         },
     )
 
+    # Attach EO, Projection, and View STAC extensions from MTL metadata.
     eo_ext = EOExtension.ext(item, add_if_missing=True)
     eo_ext.apply(
         bands=[LANDSAT9_BANDS[b] for b in sorted(cog_paths.keys()) if b in LANDSAT9_BANDS],
@@ -313,6 +316,7 @@ def create_collection(items: list[pystac.Item]) -> pystac.Collection:
         Collection with union spatial/temporal extents and EO band summaries.
     """
     all_bboxes = [item.bbox for item in items if item.bbox]
+    # Union spatial extent across all scene Items.
     west = min(b[0] for b in all_bboxes)
     south = min(b[1] for b in all_bboxes)
     east = max(b[2] for b in all_bboxes)
@@ -450,6 +454,7 @@ def build_catalog_from_dirs(
             )
         )
 
+    # Assemble collection with union extents, then write self-contained catalog tree.
     collection = create_collection(items)
     return build_and_save_catalog(collection, output_dir)
 
@@ -544,6 +549,10 @@ def main(
     Scans ``data/cog/`` for on-disk scenes, reads MTL metadata from ``data/raw/``,
     and writes a validated catalog to ``stac/``. Band asset hrefs default to
     ``s3://usgs-landsat`` URIs for cloud-native consumption.
+
+    Notes
+    -----
+    Exits with code 1 when no COG scenes match the configured filters.
     """
     logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 

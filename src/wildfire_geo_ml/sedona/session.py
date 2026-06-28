@@ -14,10 +14,12 @@ from pyspark.sql import SparkSession
 from sedona.spark import SedonaContext
 
 SEDONA_VERSION = "1.9.0"
+# Sedona 1.9.0 targets Spark 4.0 / Scala 2.13; geotools-wrapper supplies CRS ops.
 SEDONA_SPARK_ARTIFACT = f"org.apache.sedona:sedona-spark-4.0_2.13:{SEDONA_VERSION}"
 GEOTOOLS_WRAPPER = "org.datasyslab:geotools-wrapper:1.9.0-33.5"
 DEFAULT_JAR_PACKAGES = f"{SEDONA_SPARK_ARTIFACT},{GEOTOOLS_WRAPPER}"
 
+# Modest defaults for local laptop runs; increase on EMR for production AOI sizes.
 DEFAULT_SHUFFLE_PARTITIONS = "8"
 DEFAULT_DRIVER_MEMORY = "8g"
 
@@ -65,6 +67,7 @@ def create_sedona_session(
         SparkSession.builder.master(resolved_master)
         .appName(app_name)
         .config("spark.jars.packages", jar_packages)
+        # Kryo + SedonaKryoRegistrator required for spatial UDT serialization.
         .config("spark.serializer", "org.apache.spark.serializer.KryoSerializer")
         .config("spark.kryo.registrator", "org.apache.sedona.core.serde.SedonaKryoRegistrator")
         .config("spark.sql.shuffle.partitions", shuffle_partitions)
@@ -75,5 +78,6 @@ def create_sedona_session(
             builder = builder.config(key, value)
 
     spark = builder.getOrCreate()
+    # Register RS_* raster SQL functions and spatial UDTs into the Spark session.
     sedona: Any = SedonaContext.create(spark)
     return sedona
